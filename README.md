@@ -1,7 +1,8 @@
-# Project Title
+# ai-providers-mcp
 
 - Author: [Richard McQuiston](mailto:richard.mcquiston@gmail.com)
 - Website: https://richardmcquiston.com/
+- NPM Package: https://www.npmjs.com/~richardmcquiston01
 
 [![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/P1V529Z7ZP)
 
@@ -10,6 +11,8 @@
 | [Overview](#overview) | [Getting Started](#getting-started) | [Buy Me a Coffee](#buy-me-a-coffee) | [License](#license) | [Copyright](#copyright) |
 
 ## Overview
+
+MCP server that routes text and image generation to swappable AI providers (Claude, Gemini, OpenAI, Grok, Ollama, and more) via @richardmcquiston01/ai-providers. TypeScript.
 
 [Back to Top](#table-of-contents)
 
