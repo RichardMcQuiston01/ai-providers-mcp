@@ -34,9 +34,9 @@ New repo; the scaffold has not been created yet. Build in this order:
 
 ## Tools (planned)
 
-| Tool             | Input                                                           | Output                                     |
-| ---------------- | --------------------------------------------------------------- | ------------------------------------------ |
-| `list_providers` | none                                                            | configured providers and default models    |
+| Tool             | Input                                                            | Output                                     |
+| ---------------- | ---------------------------------------------------------------- | ------------------------------------------ |
+| `list_providers` | none                                                             | configured providers and default models    |
 | `generate_text`  | `prompt`, optional `instructions`, `provider`, `model`, `images` | `{ text }` or an error with a clear reason |
 | `generate_image` | `prompt`, optional `instructions`, `images`, `provider`, `mode`  | image content (base64) plus MIME type      |
 
@@ -103,14 +103,14 @@ test/            node:test + node:assert, run by bun test; fake generators, no n
 Environment variables (a git-ignored `.env`; Bun loads it). Keep
 `.env.example` current and never commit `.env`.
 
-| Variable                                                                 | Purpose                                              |
-| ------------------------------------------------------------------------ | ---------------------------------------------------- |
-| `AI_TEXT_PROVIDER`                                                       | default text provider name (`claude`, `gemini`, ...) |
-| `AI_IMAGE_PROVIDER`                                                      | default image provider name                          |
-| `ANTHROPIC_API_KEY`, `GEMINI_API_KEY`, `OPENAI_API_KEY`, `XAI_API_KEY`   | provider keys                                        |
-| `CLAUDE_TEXT_MODEL`, `GEMINI_TEXT_MODEL`, `OPENAI_TEXT_MODEL`, `OLLAMA_MODEL` | model overrides                                 |
-| `OLLAMA_HOST` (and similar local hosts)                                  | local server URL; loopback unless allowed            |
-| `MCP_HTTP_PORT`, `MCP_AUTH_TOKEN`, `MCP_ALLOWED_ORIGINS`                 | HTTP transport                                       |
+| Variable                                                                      | Purpose                                              |
+| ----------------------------------------------------------------------------- | ---------------------------------------------------- |
+| `AI_TEXT_PROVIDER`                                                            | default text provider name (`claude`, `gemini`, ...) |
+| `AI_IMAGE_PROVIDER`                                                           | default image provider name                          |
+| `ANTHROPIC_API_KEY`, `GEMINI_API_KEY`, `OPENAI_API_KEY`, `XAI_API_KEY`        | provider keys                                        |
+| `CLAUDE_TEXT_MODEL`, `GEMINI_TEXT_MODEL`, `OPENAI_TEXT_MODEL`, `OLLAMA_MODEL` | model overrides                                      |
+| `OLLAMA_HOST` (and similar local hosts)                                       | local server URL; loopback unless allowed            |
+| `MCP_HTTP_PORT`, `MCP_AUTH_TOKEN`, `MCP_ALLOWED_ORIGINS`                      | HTTP transport                                       |
 
 - Default Claude model in this server is `claude-sonnet-5-5` with effort
   `medium`, not the `ai-providers` default (`claude-opus-5-5`), to keep
