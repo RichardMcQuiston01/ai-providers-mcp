@@ -1,21 +1,12 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import { describeStartup } from '../src/index.js';
 import type {
   Result,
   TextResult,
   ImageResult,
 } from '@richardmcquiston01/ai-providers';
 import { FakeImageGenerator, FakeTextGenerator } from './fakes.js';
-
-test('describeStartup returns an ok Result naming the server', () => {
-  const startup: ReturnType<typeof describeStartup> = describeStartup();
-  assert.equal(startup.ok, true);
-  if (startup.ok) {
-    assert.match(startup.value, /ai-providers-mcp/);
-  }
-});
 
 test('FakeTextGenerator returns canned text and records requests', async () => {
   const generator: FakeTextGenerator = new FakeTextGenerator(

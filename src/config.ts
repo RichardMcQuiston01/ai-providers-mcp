@@ -429,3 +429,11 @@ export function describeConfig(config: ServerConfig): string {
     `http token: ${config.http.authToken === null ? 'not set' : 'set'}`
   );
 }
+
+/**
+ * Sets the process exit code. Lives here because `process` is restricted to
+ * this file; the entry point uses it to exit gracefully with a non-zero code.
+ */
+export function setProcessExitCode(code: number): void {
+  process.exitCode = code;
+}
