@@ -1,21 +1,37 @@
 #!/usr/bin/env node
-import { ok, type Result } from './result.js';
+import {
+  describeConfig,
+  loadConfig,
+  setProcessExitCode,
+  type ServerConfig,
+} from './config.js';
+import { createProviderRegistry, type ProviderRegistry } from './providers.js';
+import type { Result } from './result.js';
+import { createServer, SERVER_NAME } from './server.js';
+import { runStdio } from './transports/stdio.js';
 
-/** Package name, used in startup messages. */
-export const SERVER_NAME: string = 'ai-providers-mcp';
-
-/**
- * Placeholder entry point for the scaffold stage. Real transport selection
- * arrives with Stage 2.
- */
-export function describeStartup(): Result<string> {
-  return ok(`${SERVER_NAME}: scaffold only, no tools registered yet.`);
+/** Logs to stderr only: under stdio, stdout belongs to the MCP protocol. */
+function logError(message: string): void {
+  console.error(`${SERVER_NAME}: ${message}`);
 }
 
-// stdout belongs to the MCP protocol, so all logging goes to stderr.
-const startupResult: Result<string> = describeStartup();
-if (startupResult.ok) {
-  console.error(startupResult.value);
-} else {
-  console.error(startupResult.error);
+async function main(): Promise<Result<void>> {
+  const config: Result<ServerConfig> = loadConfig();
+  if (!config.ok) {
+    return config;
+  }
+  const registry: Result<ProviderRegistry> = createProviderRegistry(
+    config.value
+  );
+  if (!registry.ok) {
+    return registry;
+  }
+  logError(describeConfig(config.value));
+  return runStdio(createServer(config.value, registry.value));
+}
+
+const outcome: Result<void> = await main();
+if (!outcome.ok) {
+  logError(outcome.error);
+  setProcessExitCode(1);
 }

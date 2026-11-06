@@ -24,7 +24,7 @@ Typical clients are Claude Desktop and Claude Code (MCP over stdio), and local a
 
 ## Status
 
-Pre-release. The scaffold is being built in stages; see [ROADMAP.md](ROADMAP.md). The sections below describe the planned behavior and may change before the first release (`0.1.0`).
+Pre-release. `list_providers` and `generate_text` work over stdio. Streamable HTTP and `generate_image` are not built yet; see [ROADMAP.md](ROADMAP.md). Details below may change before the first release (`0.1.0`).
 
 [Back to Top](#table-of-contents)
 
@@ -76,6 +76,21 @@ claude mcp add ai-providers --env AI_TEXT_PROVIDER=claude --env ANTHROPIC_API_KE
 
 ### Examples
 
+`list_providers` takes no arguments and returns the configured providers, their models and which is the default. It never returns keys or hosts:
+
+```json
+{
+  "providers": [
+    {
+      "name": "claude",
+      "kind": "text",
+      "model": "claude-sonnet-5-5",
+      "isDefault": true
+    }
+  ]
+}
+```
+
 Example `generate_text` call (arguments):
 
 ```json
@@ -90,16 +105,17 @@ Example `generate_text` call (arguments):
 
 ## Tools
 
-| Tool             | Input                                                            | Output                                     |
-| ---------------- | ---------------------------------------------------------------- | ------------------------------------------ |
-| `list_providers` | none                                                             | configured providers and default models    |
-| `generate_text`  | `prompt`, optional `instructions`, `provider`, `model`, `images` | `{ text }` or an error with a clear reason |
-| `generate_image` | `prompt`, optional `instructions`, `images`, `provider`, `mode`  | image content (base64) plus MIME type      |
+| Tool                             | Input                                                            | Output                                     |
+| -------------------------------- | ---------------------------------------------------------------- | ------------------------------------------ |
+| `list_providers`                 | none                                                             | configured providers and default models    |
+| `generate_text`                  | `prompt`, optional `instructions`, `provider`, `model`, `images` | `{ text }` or an error with a clear reason |
+| `generate_image` (not built yet) | `prompt`, optional `instructions`, `images`, `provider`, `mode`  | image content (base64) plus MIME type      |
 
 - Every input is validated with Zod and treated as untrusted.
 - A failed provider call returns an MCP tool result with `isError: true` and a descriptive message naming the provider, model, action and status. It is never a thrown exception.
 - `provider` and `model` can only select among providers the operator configured. A client can never supply an API key or host.
-- Prompt size, image count and image bytes are capped, and calls have a timeout.
+- Prompt size, image count and image bytes are capped, and calls have a timeout. Images are checked by their bytes (PNG, JPEG or WebP); the declared MIME type is not trusted.
+- Images are sent as `{ "mimeType": "image/png", "data": "<base64>" }`.
 
 [Back to Top](#table-of-contents)
 
