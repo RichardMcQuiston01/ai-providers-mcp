@@ -1,4 +1,8 @@
 node_modules
-.next
-out
+dist
 package-lock.json
+bun.lock
+.changeset/config.json
+CHANGELOG.md
+.claude
+.github/rulesets

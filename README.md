@@ -107,14 +107,14 @@ Example `generate_text` call (arguments):
 
 Set variables in the client's `env` block, the shell, or a git-ignored `.env`. See `.env.example` (added with the config module).
 
-| Variable                                                                       | Purpose                                              |
-| ------------------------------------------------------------------------------ | ---------------------------------------------------- |
-| `AI_TEXT_PROVIDER`                                                             | default text provider name (`claude`, `gemini`, ...) |
-| `AI_IMAGE_PROVIDER`                                                            | default image provider name                          |
-| `ANTHROPIC_API_KEY`, `GEMINI_API_KEY`, `OPENAI_API_KEY`, `XAI_API_KEY`         | provider keys                                        |
-| `CLAUDE_TEXT_MODEL`, `GEMINI_TEXT_MODEL`, `OPENAI_TEXT_MODEL`, `OLLAMA_MODEL`  | model overrides                                      |
-| `OLLAMA_HOST` (and similar local hosts)                                        | local server URL; loopback unless explicitly allowed |
-| `MCP_HTTP_PORT`, `MCP_AUTH_TOKEN`, `MCP_ALLOWED_ORIGINS`                       | HTTP transport                                       |
+| Variable                                                                      | Purpose                                              |
+| ----------------------------------------------------------------------------- | ---------------------------------------------------- |
+| `AI_TEXT_PROVIDER`                                                            | default text provider name (`claude`, `gemini`, ...) |
+| `AI_IMAGE_PROVIDER`                                                           | default image provider name                          |
+| `ANTHROPIC_API_KEY`, `GEMINI_API_KEY`, `OPENAI_API_KEY`, `XAI_API_KEY`        | provider keys                                        |
+| `CLAUDE_TEXT_MODEL`, `GEMINI_TEXT_MODEL`, `OPENAI_TEXT_MODEL`, `OLLAMA_MODEL` | model overrides                                      |
+| `OLLAMA_HOST` (and similar local hosts)                                       | local server URL; loopback unless explicitly allowed |
+| `MCP_HTTP_PORT`, `MCP_AUTH_TOKEN`, `MCP_ALLOWED_ORIGINS`                      | HTTP transport                                       |
 
 The default Claude model is `claude-sonnet-5-5` with effort `medium` to keep cost low. Override it with `CLAUDE_TEXT_MODEL` or per call. An unknown provider name returns an error listing the valid names.
 
