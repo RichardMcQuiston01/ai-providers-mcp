@@ -127,4 +127,3 @@ Release steps: on `dev` run `bun run version-packages`; PR `dev` to `main` (merg
 | REST endpoints in addition to MCP | MCP stdio, then HTTP; REST later | Stage 3   |
 | JSON-output helper                | Defer                            | Post 0.1  |
 | Base64 image payload limits       | Set conservative caps            | Stage 4   |
-| `staging` branch                  | None; `dev` to `main`            | Stage 6   |

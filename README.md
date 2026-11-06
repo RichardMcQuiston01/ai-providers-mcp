@@ -1,6 +1,6 @@
 # ai-providers-mcp
 
-- Author: [Richard McQuiston](mailto:richard.mcquiston@gmail.com)
+- Author: [Richard McQuiston](mailto:richard.mcquiston01@gmail.com)
 - Website: https://richardmcquiston.com/
 - NPM Package: https://www.npmjs.com/~richardmcquiston01
 
