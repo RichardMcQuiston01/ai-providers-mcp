@@ -105,18 +105,21 @@ Example `generate_text` call (arguments):
 
 ## Configuration
 
-Set variables in the client's `env` block, the shell, or a git-ignored `.env`. See `.env.example` (added with the config module).
+Set variables in the client's `env` block, the shell, or a git-ignored `.env`. See [`.env.example`](.env.example).
 
-| Variable                                                                      | Purpose                                              |
-| ----------------------------------------------------------------------------- | ---------------------------------------------------- |
-| `AI_TEXT_PROVIDER`                                                            | default text provider name (`claude`, `gemini`, ...) |
-| `AI_IMAGE_PROVIDER`                                                           | default image provider name                          |
-| `ANTHROPIC_API_KEY`, `GEMINI_API_KEY`, `OPENAI_API_KEY`, `XAI_API_KEY`        | provider keys                                        |
-| `CLAUDE_TEXT_MODEL`, `GEMINI_TEXT_MODEL`, `OPENAI_TEXT_MODEL`, `OLLAMA_MODEL` | model overrides                                      |
-| `OLLAMA_HOST` (and similar local hosts)                                       | local server URL; loopback unless explicitly allowed |
-| `MCP_HTTP_PORT`, `MCP_AUTH_TOKEN`, `MCP_ALLOWED_ORIGINS`                      | HTTP transport                                       |
+| Variable                                                                      | Purpose                                                               |
+| ----------------------------------------------------------------------------- | --------------------------------------------------------------------- |
+| `AI_TEXT_PROVIDER`                                                            | default text provider name (`claude`, `gemini`, ...)                  |
+| `AI_IMAGE_PROVIDER`                                                           | default image provider name                                           |
+| `ANTHROPIC_API_KEY`, `GEMINI_API_KEY`, `OPENAI_API_KEY`, `XAI_API_KEY`        | provider keys                                                         |
+| `CLAUDE_TEXT_MODEL`, `GEMINI_TEXT_MODEL`, `OPENAI_TEXT_MODEL`, `OLLAMA_MODEL` | model overrides                                                       |
+| `OLLAMA_HOST` (and similar local hosts)                                       | local server URL; loopback unless explicitly allowed                  |
+| `AI_ALLOWED_HOSTS`                                                            | comma-separated hosts, besides loopback, that local providers may use |
+| `AI_TIMEOUT_MS`                                                               | per-call timeout in milliseconds (default `120000`)                   |
+| `AI_MAX_PROMPT_CHARS`, `AI_MAX_IMAGES`, `AI_MAX_IMAGE_BYTES`                  | input limits (defaults `100000`, `4`, `8388608`)                      |
+| `MCP_HTTP_PORT`, `MCP_AUTH_TOKEN`, `MCP_ALLOWED_ORIGINS`                      | HTTP transport                                                        |
 
-The default Claude model is `claude-sonnet-5-5` with effort `medium` to keep cost low. Override it with `CLAUDE_TEXT_MODEL` or per call. An unknown provider name returns an error listing the valid names.
+The default Claude model is `claude-sonnet-5-5` with effort `medium` to keep cost low. Override it with `CLAUDE_TEXT_MODEL` or per call. An unknown provider name returns an error listing the valid names. Setting a provider's key (or `OLLAMA_MODEL` for Ollama) enables it. If more than one provider of a kind is enabled, set `AI_TEXT_PROVIDER` / `AI_IMAGE_PROVIDER` so prompts only go where you choose.
 
 [Back to Top](#table-of-contents)
 
