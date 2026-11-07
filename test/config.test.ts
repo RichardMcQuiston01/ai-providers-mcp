@@ -136,3 +136,49 @@ test('neither errors nor the startup summary ever contain a key', () => {
   });
   assert.equal(message.includes(secret), false);
 });
+
+test('transport defaults to stdio; --http and MCP_TRANSPORT select http', () => {
+  const stdio: ServerConfig = mustParse({});
+  assert.equal(stdio.transport, 'stdio');
+  const flag: Result<ServerConfig> = parseConfig({}, ['--http']);
+  assert.equal(flag.ok && flag.value.transport, 'http');
+  assert.equal(mustParse({ MCP_TRANSPORT: 'http' }).transport, 'http');
+  assert.match(mustFail({ MCP_TRANSPORT: 'carrier-pigeon' }), /MCP_TRANSPORT/);
+});
+
+test('HTTP binds loopback by default and refuses other hosts unless allowed', () => {
+  assert.equal(mustParse({}).http.host, '127.0.0.1');
+  const message: string = mustFail({ MCP_HTTP_HOST: '0.0.0.0' });
+  assert.match(message, /not a loopback address/);
+  assert.match(message, /MCP_HTTP_ALLOW_NON_LOOPBACK/);
+  const container: ServerConfig = mustParse({
+    MCP_HTTP_HOST: '0.0.0.0',
+    MCP_HTTP_ALLOW_NON_LOOPBACK: 'true',
+  });
+  assert.equal(container.http.host, '0.0.0.0');
+});
+
+test('a weak MCP_AUTH_TOKEN is rejected without echoing it', () => {
+  const message: string = mustFail({ MCP_AUTH_TOKEN: 'hunter2' });
+  assert.match(message, /MCP_AUTH_TOKEN/);
+  assert.equal(message.includes('hunter2'), false);
+  assert.equal(
+    mustParse({ MCP_AUTH_TOKEN: 'a'.repeat(32) }).http.authToken,
+    'a'.repeat(32)
+  );
+});
+
+test('MCP_ALLOWED_ORIGINS takes exact origins only', () => {
+  const config: ServerConfig = mustParse({
+    MCP_ALLOWED_ORIGINS: 'chrome-extension://abc, HTTP://localhost:3000',
+  });
+  assert.deepEqual(config.http.allowedOrigins, [
+    'chrome-extension://abc',
+    'http://localhost:3000',
+  ]);
+  assert.match(mustFail({ MCP_ALLOWED_ORIGINS: '*' }), /not an origin/);
+  assert.match(
+    mustFail({ MCP_ALLOWED_ORIGINS: 'https://a.example/path' }),
+    /not an origin/
+  );
+});
