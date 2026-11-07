@@ -1,7 +1,15 @@
 import assert from 'node:assert/strict';
-import { mkdtemp, readFile, stat, writeFile, chmod } from 'node:fs/promises';
+import {
+  chmod,
+  mkdtemp,
+  readdir,
+  readFile,
+  stat,
+  symlink,
+  writeFile,
+} from 'node:fs/promises';
 import { platform, tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { test } from 'node:test';
 
 import type { Result } from '@richardmcquiston01/ai-providers';
@@ -82,4 +90,36 @@ test('tokensMatch is exact', () => {
   assert.equal(tokensMatch('abc', 'abd'), false);
   assert.equal(tokensMatch('abc', 'abcd'), false);
   assert.equal(tokensMatch('', 'abc'), false);
+});
+
+test('a symlinked token path is refused, not followed', async () => {
+  if (platform() === 'win32') return;
+  const path: string = await freshPath();
+  await resolveAuthToken({ authToken: null, tokenFilePath: path });
+  const target: string = `${path}.target`;
+  await writeFile(target, `${'z'.repeat(40)}\n`, { mode: 0o600 });
+  const linked: string = `${path}.link`;
+  await symlink(target, linked);
+  const result: Result<ResolvedToken> = await resolveAuthToken({
+    authToken: null,
+    tokenFilePath: linked,
+  });
+  assert.equal(result.ok, false);
+  assert.match(result.ok ? '' : result.error, /not a regular file/);
+});
+
+test('simultaneous first starts agree on one token and leave no temp files', async () => {
+  const path: string = await freshPath();
+  const results: Result<ResolvedToken>[] = await Promise.all(
+    Array.from({ length: 8 }, (): Promise<Result<ResolvedToken>> =>
+      resolveAuthToken({ authToken: null, tokenFilePath: path })
+    )
+  );
+  const tokens: Set<string> = new Set();
+  for (const result of results) {
+    assert.equal(result.ok, true, result.ok ? '' : result.error);
+    if (result.ok) tokens.add(result.value.token);
+  }
+  assert.equal(tokens.size, 1);
+  assert.deepEqual(await readdir(dirname(path)), ['token']);
 });

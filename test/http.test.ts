@@ -28,6 +28,7 @@ function start(
     host?: string;
     maxPromptChars?: number;
     maxImageBytes?: number;
+    maxConcurrentRequests?: number;
   } = {}
 ): Promise<Result<RunningHttpServer>> {
   return startHttpServer({
@@ -45,6 +46,9 @@ function start(
         overrides.maxImageBytes ?? setup.config.limits.maxImageBytes,
     },
     token: TOKEN,
+    ...(overrides.maxConcurrentRequests === undefined
+      ? {}
+      : { maxConcurrentRequests: overrides.maxConcurrentRequests }),
     createMcpServer: () => createServer(setup.config, setup.registry),
     log: (message: string): void => {
       logged.push(message);
@@ -327,4 +331,103 @@ test('the server log never contains the token or provider keys', () => {
   const everything: string = logged.join('\n');
   assert.equal(everything.includes(TOKEN), false);
   assert.equal(everything.includes('test-only-key'), false);
+});
+
+test('replies always carry Vary: Origin and Cache-Control: no-store', async () => {
+  const ok: RawResponse = await raw('POST', GOOD, INITIALIZE);
+  assert.match(String(ok.headers['vary']), /Origin/);
+  assert.equal(ok.headers['cache-control'], 'no-store');
+  const denied: RawResponse = await raw(
+    'POST',
+    { ...GOOD, authorization: '' },
+    INITIALIZE
+  );
+  assert.match(String(denied.headers['vary']), /Origin/);
+});
+
+test('rejections close the connection', async () => {
+  const unauthorized: RawResponse = await raw(
+    'POST',
+    { ...GOOD, authorization: '' },
+    INITIALIZE
+  );
+  assert.equal(unauthorized.headers['connection'], 'close');
+  const badHost: RawResponse = await raw(
+    'POST',
+    { ...GOOD, host: 'evil.example.com' },
+    INITIALIZE
+  );
+  assert.equal(badHost.headers['connection'], 'close');
+});
+
+test('JSON-RPC batches of more than one message are refused', async () => {
+  const batch: string = JSON.stringify([
+    { jsonrpc: '2.0', id: 1, method: 'tools/list' },
+    { jsonrpc: '2.0', id: 2, method: 'tools/list' },
+  ]);
+  const response: RawResponse = await raw('POST', GOOD, batch);
+  assert.equal(response.status, 400);
+  assert.match(response.body, /batches are not supported/);
+});
+
+test('requests over the concurrency cap get 429, and capacity frees afterwards', async () => {
+  const gate: Result<RunningHttpServer> = await start({
+    maxConcurrentRequests: 1,
+  });
+  assert.equal(gate.ok, true);
+  if (!gate.ok) return;
+  try {
+    // Hold one request open by sending headers and a partial body.
+    const slow: Promise<RawResponse> = new Promise<RawResponse>(
+      (resolve, reject): void => {
+        const req: ClientRequest = request(
+          {
+            host: '127.0.0.1',
+            port: gate.value.port,
+            path: '/mcp',
+            method: 'POST',
+            headers: { ...GOOD, 'content-length': '1000' },
+          },
+          (res): void => {
+            res.resume();
+            resolve({
+              status: res.statusCode ?? 0,
+              headers: res.headers,
+              body: '',
+            });
+          }
+        );
+        req.on('error', reject);
+        req.write('{');
+        setTimeout((): void => {
+          req.destroy();
+          resolve({ status: 0, headers: {}, body: '' });
+        }, 400);
+      }
+    );
+    await new Promise<void>((done): void => {
+      setTimeout(done, 100);
+    });
+    const second: RawResponse = await raw(
+      'POST',
+      GOOD,
+      INITIALIZE,
+      gate.value.port
+    );
+    assert.equal(second.status, 429);
+    assert.equal(second.headers['retry-after'], '1');
+    await slow;
+    await new Promise<void>((done): void => {
+      setTimeout(done, 100);
+    });
+    const third: RawResponse = await raw(
+      'POST',
+      GOOD,
+      INITIALIZE,
+      gate.value.port
+    );
+    assert.equal(third.status, 200);
+  } finally {
+    await gate.value.close();
+  }
 });
