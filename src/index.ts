@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import {
   describeConfig,
+  isLoopbackBindHost,
   loadConfig,
   onTerminationSignal,
   setProcessExitCode,
@@ -40,6 +41,11 @@ async function runHttp(
   });
   if (!running.ok) {
     return running;
+  }
+  if (!isLoopbackBindHost(config.http.host)) {
+    logError(
+      `warning: bound to ${config.http.host} over plain HTTP. The bearer token is not encrypted in transit; publish the port on 127.0.0.1 only.`
+    );
   }
   // The token itself is never printed, only where it lives.
   const tokenNote: string =

@@ -24,6 +24,10 @@ export const MCP_PATH: string = '/mcp';
 const CORS_ALLOWED_HEADERS: string =
   'authorization, content-type, accept, mcp-protocol-version, mcp-session-id';
 const BODY_SLACK_BYTES: number = 64 * 1024;
+/** Requests handled at once; more get 429. Each can spend provider credits. */
+export const DEFAULT_MAX_CONCURRENT_REQUESTS: number = 8;
+/** A JSON-RPC batch longer than this is refused; MCP clients send one message per POST. */
+const MAX_BATCH_LENGTH: number = 1;
 
 export interface HttpServerOptions {
   readonly http: Pick<
@@ -35,6 +39,7 @@ export interface HttpServerOptions {
   readonly token: string;
   /** Builds a fresh MCP server per request (stateless; tools hold no session). */
   readonly createMcpServer: () => McpServer;
+  readonly maxConcurrentRequests?: number;
   /** stderr logger; receives no tokens, headers or bodies. */
   readonly log: (message: string) => void;
 }
@@ -74,6 +79,16 @@ function sendJson(
     ...headers,
   });
   res.end(body);
+}
+
+/** Rejections close the connection so an unread body is not streamed to a dead end. */
+function reject(
+  res: ServerResponse,
+  status: number,
+  message: string,
+  headers: Record<string, string> = {}
+): void {
+  sendJson(res, status, message, { ...headers, Connection: 'close' });
 }
 
 function singleHeader(req: IncomingMessage, name: string): string | undefined {
@@ -170,11 +185,17 @@ export async function startHttpServer(
   const bodyLimit: number = maxBodyBytes(limits);
   const allowedOrigins: ReadonlySet<string> = new Set(http.allowedOrigins);
   let allowedHosts: ReadonlySet<string> = new Set();
+  const maxConcurrent: number =
+    options.maxConcurrentRequests ?? DEFAULT_MAX_CONCURRENT_REQUESTS;
+  let inFlight: number = 0;
 
   async function handle(
     req: IncomingMessage,
     res: ServerResponse
   ): Promise<void> {
+    // Always set, so a shared cache never serves one origin's reply to another.
+    res.setHeader('Vary', 'Origin');
+    res.setHeader('Cache-Control', 'no-store');
     const path: string = (req.url ?? '').split('?')[0] ?? '';
     if (path !== MCP_PATH) {
       sendJson(res, 404, `Not found. The MCP endpoint is ${MCP_PATH}.`);
@@ -185,7 +206,7 @@ export async function startHttpServer(
       hostHeader === undefined ||
       !allowedHosts.has(hostHeader.toLowerCase())
     ) {
-      sendJson(
+      reject(
         res,
         403,
         'Host header is not allowed. Connect to 127.0.0.1 or localhost on the server port.'
@@ -196,7 +217,7 @@ export async function startHttpServer(
     const corsHeaders: Record<string, string> = {};
     if (origin !== undefined) {
       if (!allowedOrigins.has(origin.toLowerCase())) {
-        sendJson(
+        reject(
           res,
           403,
           'Origin is not allowed. Add it to MCP_ALLOWED_ORIGINS on the server.'
@@ -204,7 +225,6 @@ export async function startHttpServer(
         return;
       }
       corsHeaders['Access-Control-Allow-Origin'] = origin;
-      corsHeaders['Vary'] = 'Origin';
     }
     if (req.method === 'OPTIONS') {
       if (origin === undefined) {
@@ -222,7 +242,7 @@ export async function startHttpServer(
     }
     const provided: string | null = extractBearer(req);
     if (provided === null || !tokensMatch(provided, token)) {
-      sendJson(
+      reject(
         res,
         401,
         'Missing or invalid bearer token. Send Authorization: Bearer <token>.',
@@ -234,7 +254,7 @@ export async function startHttpServer(
       return;
     }
     if (req.method !== 'POST') {
-      sendJson(
+      reject(
         res,
         405,
         'Only POST is supported; this server is stateless and has no event stream.',
@@ -254,6 +274,20 @@ export async function startHttpServer(
       sendJson(res, 415, 'Content-Type must be application/json.', corsHeaders);
       return;
     }
+    // Cap concurrent work before buffering a body: every call can spend credits.
+    if (inFlight >= maxConcurrent) {
+      reject(
+        res,
+        429,
+        `Too many requests in progress (limit ${maxConcurrent}). Retry shortly.`,
+        { ...corsHeaders, 'Retry-After': '1' }
+      );
+      return;
+    }
+    inFlight += 1;
+    res.once('close', (): void => {
+      inFlight -= 1;
+    });
     const body: BodyResult = await readJsonBody(req, bodyLimit);
     if (!body.ok) {
       if (body.tooLarge === true) {
@@ -268,6 +302,15 @@ export async function startHttpServer(
         return;
       }
       sendJson(res, 400, body.error, corsHeaders);
+      return;
+    }
+    if (Array.isArray(body.value) && body.value.length > MAX_BATCH_LENGTH) {
+      sendJson(
+        res,
+        400,
+        `JSON-RPC batches are not supported; send one message per request (got ${body.value.length}).`,
+        corsHeaders
+      );
       return;
     }
     for (const [name, value] of Object.entries(corsHeaders)) {
