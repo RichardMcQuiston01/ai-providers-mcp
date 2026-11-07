@@ -1,4 +1,7 @@
 // The ONLY file that reads process.env. Everything else gets a ServerConfig.
+import { homedir } from 'node:os';
+import { join } from 'node:path';
+
 import {
   checkProviderHost,
   parseAllowedHosts,
@@ -34,11 +37,19 @@ export const DEFAULT_LIMITS: ServerLimits = {
   timeoutMs: 120_000,
 };
 
+export type TransportName = 'stdio' | 'http';
+
 export interface HttpConfig {
+  /** Loopback unless `allowNonLoopback` is set (e.g. inside a container). */
+  readonly host: string;
   readonly port: number;
-  /** Null means "generate one on first run" (Stage 3). Never a default value. */
+  /** Null means "read or generate one on first run". Never a default value. */
   readonly authToken: string | null;
+  /** Where a generated token is stored (file mode 0600). */
+  readonly tokenFilePath: string;
+  /** Exact origins a browser may call from, e.g. chrome-extension://abc. */
   readonly allowedOrigins: readonly string[];
+  readonly allowNonLoopback: boolean;
 }
 
 /** One provider the operator configured, plus which environment variable enabled it. */
@@ -48,6 +59,7 @@ export interface ProviderSettings<T> {
 }
 
 export interface ServerConfig {
+  readonly transport: TransportName;
   /** Configured text providers by name, in a fixed order. */
   readonly textProviders: readonly ProviderSettings<TextProviderConfig>[];
   readonly imageProviders: readonly ProviderSettings<ImageProviderConfig>[];
@@ -59,6 +71,14 @@ export interface ServerConfig {
 }
 
 const DEFAULT_HTTP_PORT: number = 8787;
+export const DEFAULT_HTTP_HOST: string = '127.0.0.1';
+/** Shortest auth token accepted; a generated one is much longer. */
+export const MIN_AUTH_TOKEN_LENGTH: number = 24;
+const LOOPBACK_BIND_HOSTS: readonly string[] = [
+  '127.0.0.1',
+  '::1',
+  'localhost',
+];
 const MAX_MODEL_NAME_LENGTH: number = 200;
 
 /** Reads a variable; an empty or whitespace-only value counts as unset. */
@@ -264,11 +284,109 @@ function chooseDefault(
   return ok(name);
 }
 
+/** True when a bind address only accepts connections from this machine. */
+export function isLoopbackBindHost(host: string): boolean {
+  return LOOPBACK_BIND_HOSTS.includes(host.toLowerCase());
+}
+
+/** Reads a true/false variable; anything else is an error naming the variable. */
+function readBoolean(env: EnvironmentMap, name: string): Result<boolean> {
+  const raw: string | null = readVariable(env, name);
+  if (raw === null) {
+    return ok(false);
+  }
+  const lowered: string = raw.toLowerCase();
+  if (lowered === 'true' || lowered === '1') return ok(true);
+  if (lowered === 'false' || lowered === '0') return ok(false);
+  return err(`${name}: expected true or false, got "${raw}".`);
+}
+
+/** An origin is scheme://host[:port] with no path, query or wildcard. */
+const ORIGIN_PATTERN: RegExp = /^[a-z][a-z0-9+.-]*:\/\/[^/\s*?#]+$/;
+
+function checkOrigins(origins: readonly string[]): Result<readonly string[]> {
+  const normalized: string[] = [];
+  for (const origin of origins) {
+    const lowered: string = origin.toLowerCase();
+    if (!ORIGIN_PATTERN.test(lowered)) {
+      return err(
+        `MCP_ALLOWED_ORIGINS: "${origin}" is not an origin. Use scheme://host[:port] with no path or wildcard, e.g. chrome-extension://abcdef or http://localhost:3000.`
+      );
+    }
+    normalized.push(lowered);
+  }
+  return ok(normalized);
+}
+
+/** Where a generated token is stored when MCP_TOKEN_FILE is not set. */
+function defaultTokenFilePath(env: EnvironmentMap): string {
+  const configHome: string =
+    readVariable(env, 'XDG_CONFIG_HOME') ?? join(homedir(), '.config');
+  return join(configHome, 'ai-providers-mcp', 'token');
+}
+
+function parseHttpConfig(
+  env: EnvironmentMap,
+  port: number
+): Result<HttpConfig> {
+  const allowNonLoopback: Result<boolean> = readBoolean(
+    env,
+    'MCP_HTTP_ALLOW_NON_LOOPBACK'
+  );
+  if (!allowNonLoopback.ok) return allowNonLoopback;
+  const host: string = readVariable(env, 'MCP_HTTP_HOST') ?? DEFAULT_HTTP_HOST;
+  if (!allowNonLoopback.value && !isLoopbackBindHost(host)) {
+    return err(
+      `MCP_HTTP_HOST: "${host}" is not a loopback address. The HTTP transport binds ${LOOPBACK_BIND_HOSTS.join(', ')} only. ` +
+        'Inside a container, set MCP_HTTP_ALLOW_NON_LOOPBACK=true and publish the port on 127.0.0.1 only.'
+    );
+  }
+  const authToken: string | null = readVariable(env, 'MCP_AUTH_TOKEN');
+  if (
+    authToken !== null &&
+    (authToken.length < MIN_AUTH_TOKEN_LENGTH || /\s/.test(authToken))
+  ) {
+    return err(
+      `MCP_AUTH_TOKEN: must be at least ${MIN_AUTH_TOKEN_LENGTH} characters with no whitespace. Leave it unset to generate one on first run.`
+    );
+  }
+  const origins: Result<readonly string[]> = checkOrigins(
+    readList(env, 'MCP_ALLOWED_ORIGINS')
+  );
+  if (!origins.ok) return origins;
+  return ok({
+    host,
+    port,
+    authToken,
+    tokenFilePath:
+      readVariable(env, 'MCP_TOKEN_FILE') ?? defaultTokenFilePath(env),
+    allowedOrigins: origins.value,
+    allowNonLoopback: allowNonLoopback.value,
+  });
+}
+
+/** Chooses stdio or http from the --http flag, then MCP_TRANSPORT, else stdio. */
+function chooseTransport(
+  env: EnvironmentMap,
+  args: readonly string[]
+): Result<TransportName> {
+  if (args.includes('--http')) return ok('http');
+  if (args.includes('--stdio')) return ok('stdio');
+  const raw: string | null = readVariable(env, 'MCP_TRANSPORT');
+  if (raw === null) return ok('stdio');
+  const lowered: string = raw.toLowerCase();
+  if (lowered === 'stdio' || lowered === 'http') return ok(lowered);
+  return err(`MCP_TRANSPORT: expected stdio or http, got "${raw}".`);
+}
+
 /**
  * Builds the server configuration from an environment map.
  * Never includes a key in an error message.
  */
-export function parseConfig(env: EnvironmentMap): Result<ServerConfig> {
+export function parseConfig(
+  env: EnvironmentMap,
+  args: readonly string[] = []
+): Result<ServerConfig> {
   const timeout: Result<number> = readPositiveInteger(
     env,
     'AI_TIMEOUT_MS',
@@ -391,7 +509,13 @@ export function parseConfig(env: EnvironmentMap): Result<ServerConfig> {
   );
   if (!defaultImage.ok) return defaultImage;
 
+  const transport: Result<TransportName> = chooseTransport(env, args);
+  if (!transport.ok) return transport;
+  const http: Result<HttpConfig> = parseHttpConfig(env, port.value);
+  if (!http.ok) return http;
+
   return ok({
+    transport: transport.value,
     textProviders,
     imageProviders,
     defaultTextProvider: defaultText.value,
@@ -402,17 +526,13 @@ export function parseConfig(env: EnvironmentMap): Result<ServerConfig> {
       maxImageBytes: maxImageBytes.value,
       timeoutMs: timeout.value,
     },
-    http: {
-      port: port.value,
-      authToken: readVariable(env, 'MCP_AUTH_TOKEN'),
-      allowedOrigins: readList(env, 'MCP_ALLOWED_ORIGINS'),
-    },
+    http: http.value,
   });
 }
 
 /** Loads configuration from the real process environment. */
 export function loadConfig(): Result<ServerConfig> {
-  return parseConfig(process.env);
+  return parseConfig(process.env, process.argv.slice(2));
 }
 
 /** Which keys are set, never their values, for startup logs. */
@@ -426,6 +546,7 @@ export function describeConfig(config: ServerConfig): string {
   return (
     `text providers: ${textLabel} (default: ${config.defaultTextProvider ?? 'none'}); ` +
     `image providers: ${imageLabel} (default: ${config.defaultImageProvider ?? 'none'}); ` +
+    `transport: ${config.transport}; ` +
     `http token: ${config.http.authToken === null ? 'not set' : 'set'}`
   );
 }
@@ -436,4 +557,10 @@ export function describeConfig(config: ServerConfig): string {
  */
 export function setProcessExitCode(code: number): void {
   process.exitCode = code;
+}
+
+/** Runs `handler` once on SIGINT or SIGTERM, for a graceful shutdown. */
+export function onTerminationSignal(handler: () => void): void {
+  process.once('SIGINT', handler);
+  process.once('SIGTERM', handler);
 }
