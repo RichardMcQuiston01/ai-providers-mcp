@@ -1,7 +1,14 @@
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 import type { Stats } from 'node:fs';
-import { chmod, mkdir, readFile, stat, writeFile } from 'node:fs/promises';
-import { platform } from 'node:os';
+import {
+  link,
+  lstat,
+  mkdir,
+  readFile,
+  unlink,
+  writeFile,
+} from 'node:fs/promises';
+import { platform, userInfo } from 'node:os';
 import { dirname } from 'node:path';
 
 import { describeUnknownError } from '@richardmcquiston01/ai-providers';
@@ -37,6 +44,82 @@ function isTooPermissive(mode: number): boolean {
   return platform() !== 'win32' && (mode & 0o077) !== 0;
 }
 
+/** Reads and validates an existing token file. A missing file is `null`. */
+async function readTokenFile(path: string): Promise<Result<string> | null> {
+  try {
+    // lstat: a symlink is refused rather than followed.
+    const info: Stats = await lstat(path);
+    if (!info.isFile()) {
+      return err(
+        `Token path ${path} is not a regular file (symlinks are refused). Remove it or set MCP_TOKEN_FILE.`
+      );
+    }
+    if (platform() !== 'win32' && info.uid !== userInfo().uid) {
+      return err(
+        `Token file ${path} is owned by another user (uid ${info.uid}). Remove it or set MCP_TOKEN_FILE.`
+      );
+    }
+    if (isTooPermissive(info.mode)) {
+      return err(
+        `Token file ${path} is readable by other users (mode ${(info.mode & 0o777).toString(8)}). Run: chmod 600 ${path}`
+      );
+    }
+    const stored: string = (await readFile(path, 'utf8')).trim();
+    if (stored.length < MIN_AUTH_TOKEN_LENGTH || /\s/.test(stored)) {
+      return err(
+        `Token file ${path} does not hold a valid token (needs ${MIN_AUTH_TOKEN_LENGTH}+ characters, no whitespace). Delete it to generate a new one.`
+      );
+    }
+    return ok(stored);
+  } catch (caught: unknown) {
+    if (isMissingFile(caught)) {
+      return null;
+    }
+    return err(
+      `Could not read the token file ${path}: ${describeUnknownError(caught)}`,
+      caught
+    );
+  }
+}
+
+function isAlreadyExists(caught: unknown): boolean {
+  return (
+    typeof caught === 'object' &&
+    caught !== null &&
+    'code' in caught &&
+    (caught as { code?: unknown }).code === 'EEXIST'
+  );
+}
+
+/**
+ * Writes a new token so it appears all at once: write a private temp file,
+ * then hard-link it into place. link() fails if the path exists, so an
+ * existing file is never replaced and a concurrent reader never sees a
+ * half-written token.
+ */
+async function createTokenFile(
+  path: string
+): Promise<Result<string> | 'exists'> {
+  const temporaryPath: string = `${path}.${randomBytes(6).toString('hex')}.tmp`;
+  try {
+    await mkdir(dirname(path), { recursive: true, mode: 0o700 });
+    const token: string = generateToken();
+    await writeFile(temporaryPath, `${token}\n`, { flag: 'wx', mode: 0o600 });
+    await link(temporaryPath, path);
+    return ok(token);
+  } catch (caught: unknown) {
+    if (isAlreadyExists(caught)) {
+      return 'exists';
+    }
+    return err(
+      `Could not store a new token at ${path}: ${describeUnknownError(caught)}. Set MCP_TOKEN_FILE to a writable path or MCP_AUTH_TOKEN.`,
+      caught
+    );
+  } finally {
+    await unlink(temporaryPath).catch((): void => undefined);
+  }
+}
+
 /**
  * Finds the bearer token: MCP_AUTH_TOKEN, else the token file, else a new
  * random token written to that file with mode 0600. The token itself is
@@ -49,41 +132,26 @@ export async function resolveAuthToken(
     return ok({ token: http.authToken, source: 'environment', path: null });
   }
   const path: string = http.tokenFilePath;
-  try {
-    const info: Stats = await stat(path);
-    if (isTooPermissive(info.mode)) {
-      return err(
-        `Token file ${path} is readable by other users (mode ${(info.mode & 0o777).toString(8)}). Run: chmod 600 ${path}`
-      );
-    }
-    const stored: string = (await readFile(path, 'utf8')).trim();
-    if (stored.length < MIN_AUTH_TOKEN_LENGTH || /\s/.test(stored)) {
-      return err(
-        `Token file ${path} does not hold a valid token (needs ${MIN_AUTH_TOKEN_LENGTH}+ characters, no whitespace). Delete it to generate a new one.`
-      );
-    }
-    return ok({ token: stored, source: 'file', path });
-  } catch (caught: unknown) {
-    if (!isMissingFile(caught)) {
-      return err(
-        `Could not read the token file ${path}: ${describeUnknownError(caught)}`,
-        caught
-      );
-    }
+  const existing: Result<string> | null = await readTokenFile(path);
+  if (existing !== null) {
+    return existing.ok
+      ? ok({ token: existing.value, source: 'file', path })
+      : existing;
   }
-  try {
-    await mkdir(dirname(path), { recursive: true, mode: 0o700 });
-    const token: string = generateToken();
-    // 'wx' fails if another process created the file first, so it is never overwritten.
-    await writeFile(path, `${token}\n`, { flag: 'wx', mode: 0o600 });
-    await chmod(path, 0o600);
-    return ok({ token, source: 'generated', path });
-  } catch (caught: unknown) {
-    return err(
-      `Could not store a new token at ${path}: ${describeUnknownError(caught)}. Set MCP_TOKEN_FILE to a writable path or MCP_AUTH_TOKEN.`,
-      caught
-    );
+  const created: Result<string> | 'exists' = await createTokenFile(path);
+  if (created === 'exists') {
+    // Another instance won the race; use its token.
+    const winner: Result<string> | null = await readTokenFile(path);
+    if (winner === null) {
+      return err(`Token file ${path} disappeared while starting. Try again.`);
+    }
+    return winner.ok
+      ? ok({ token: winner.value, source: 'file', path })
+      : winner;
   }
+  return created.ok
+    ? ok({ token: created.value, source: 'generated', path })
+    : created;
 }
 
 /** Constant-time comparison; hashing first hides the length of the real token. */
