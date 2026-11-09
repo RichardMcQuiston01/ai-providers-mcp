@@ -182,3 +182,15 @@ test('MCP_ALLOWED_ORIGINS takes exact origins only', () => {
     /not an origin/
   );
 });
+
+test('the output image cap has a default and can be set', () => {
+  assert.equal(mustParse({}).limits.maxOutputImageBytes, 16 * 1024 * 1024);
+  assert.equal(
+    mustParse({ AI_MAX_OUTPUT_IMAGE_BYTES: '1000' }).limits.maxOutputImageBytes,
+    1000
+  );
+  assert.match(
+    mustFail({ AI_MAX_OUTPUT_IMAGE_BYTES: 'big' }),
+    /AI_MAX_OUTPUT_IMAGE_BYTES/
+  );
+});
