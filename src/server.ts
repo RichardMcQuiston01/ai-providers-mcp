@@ -2,6 +2,7 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 
 import type { ServerConfig } from './config.js';
 import type { ProviderRegistry } from './providers.js';
+import { registerGenerateImage } from './tools/generateImage.js';
 import { registerGenerateText } from './tools/generateText.js';
 import { registerListProviders } from './tools/listProviders.js';
 
@@ -19,5 +20,6 @@ export function createServer(
   });
   registerListProviders(server, registry);
   registerGenerateText(server, registry, config.limits);
+  registerGenerateImage(server, registry, config.limits);
   return server;
 }
