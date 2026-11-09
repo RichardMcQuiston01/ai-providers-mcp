@@ -24,7 +24,7 @@ Typical clients are Claude Desktop and Claude Code (MCP over stdio), and local a
 
 ## Status
 
-Pre-release. `list_providers` and `generate_text` work over stdio. Streamable HTTP is available (local only, bearer token). `generate_image` is not built yet; see [ROADMAP.md](ROADMAP.md). Details below may change before the first release (`0.1.0`).
+Pre-release. `list_providers`, `generate_text` and `generate_image` work over stdio and Streamable HTTP (local only, bearer token). See [ROADMAP.md](ROADMAP.md) for what is left. Details below may change before the first release (`0.1.0`).
 
 [Back to Top](#table-of-contents)
 
@@ -111,15 +111,29 @@ Example `generate_text` call (arguments):
 }
 ```
 
+Example `generate_image` call (arguments). Pass `images` to edit one (the first) or give references (the rest):
+
+```json
+{
+  "prompt": "Put the product on a wooden table",
+  "instructions": "Keep the product unchanged.",
+  "images": [{ "mimeType": "image/png", "data": "<base64>" }],
+  "provider": "gemini",
+  "mode": "gemini-2.5-flash-image"
+}
+```
+
+The result is an MCP `image` content block (`data` is base64, `mimeType` comes from the image bytes, not from the provider) and a short text note. `mode` must be one the provider lists; an unknown mode returns the valid ones. For Gemini and OpenAI the mode is the image model. Image providers that need extra settings (ComfyUI, Replicate, fal, Black Forest Labs, Stability, the SD web UI) are not enabled yet.
+
 [Back to Top](#table-of-contents)
 
 ## Tools
 
-| Tool                             | Input                                                            | Output                                     |
-| -------------------------------- | ---------------------------------------------------------------- | ------------------------------------------ |
-| `list_providers`                 | none                                                             | configured providers and default models    |
-| `generate_text`                  | `prompt`, optional `instructions`, `provider`, `model`, `images` | `{ text }` or an error with a clear reason |
-| `generate_image` (not built yet) | `prompt`, optional `instructions`, `images`, `provider`, `mode`  | image content (base64) plus MIME type      |
+| Tool             | Input                                                            | Output                                                                       |
+| ---------------- | ---------------------------------------------------------------- | ---------------------------------------------------------------------------- |
+| `list_providers` | none                                                             | configured providers and default models                                      |
+| `generate_text`  | `prompt`, optional `instructions`, `provider`, `model`, `images` | `{ text }` or an error with a clear reason                                   |
+| `generate_image` | `prompt`, optional `instructions`, `images`, `provider`, `mode`  | an image content block (base64 plus MIME type) and a short note, or an error |
 
 - Every input is validated with Zod and treated as untrusted.
 - A failed provider call returns an MCP tool result with `isError: true` and a descriptive message naming the provider, model, action and status. It is never a thrown exception.
@@ -143,6 +157,7 @@ Set variables in the client's `env` block, the shell, or a git-ignored `.env`. S
 | `AI_ALLOWED_HOSTS`                                                            | comma-separated hosts, besides loopback, that local providers may use                                                                                                               |
 | `AI_TIMEOUT_MS`                                                               | per-call timeout in milliseconds (default `120000`)                                                                                                                                 |
 | `AI_MAX_PROMPT_CHARS`, `AI_MAX_IMAGES`, `AI_MAX_IMAGE_BYTES`                  | input limits (defaults `100000`, `4`, `8388608`)                                                                                                                                    |
+| `AI_MAX_OUTPUT_IMAGE_BYTES`                                                   | largest generated image returned (default `16777216`); a larger one is refused with an error naming this setting                                                                    |
 | `MCP_TRANSPORT`                                                               | `stdio` (default) or `http`; the `--http` flag also selects HTTP                                                                                                                    |
 | `MCP_HTTP_PORT`                                                               | HTTP port (default `8787`)                                                                                                                                                          |
 | `MCP_AUTH_TOKEN`                                                              | bearer token (24+ characters). Unset: one is read from or generated into `MCP_TOKEN_FILE`                                                                                           |
