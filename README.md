@@ -24,7 +24,7 @@ Typical clients are Claude Desktop and Claude Code (MCP over stdio), and local a
 
 ## Status
 
-Pre-release. `list_providers`, `generate_text` and `generate_image` work over stdio and Streamable HTTP (local only, bearer token). See [ROADMAP.md](ROADMAP.md) for what is left. Details below may change before the first release (`0.1.0`).
+Pre-release. `list_providers`, `generate_text` and `generate_image` work over stdio and Streamable HTTP (local only, bearer token). A Docker image and compose file are included. See [ROADMAP.md](ROADMAP.md) for what is left. Details below may change before the first release (`0.1.0`).
 
 [Back to Top](#table-of-contents)
 
@@ -83,6 +83,25 @@ npx -y ai-providers-mcp --http
 ```
 
 The server logs where the bearer token is stored. Send it as `Authorization: Bearer <token>` to `http://127.0.0.1:8787/mcp`.
+
+### Docker
+
+For a local HTTP server in a container. The image runs as a non-root user, contains no keys or `.env`, and the compose file publishes the port on `127.0.0.1` only.
+
+```bash
+cp .env.example .env            # add your provider keys; .env is git-ignored
+docker compose up -d --build
+docker compose exec ai-providers-mcp cat /data/token   # the bearer token
+```
+
+Then send `Authorization: Bearer <token>` to `http://127.0.0.1:8787/mcp`.
+
+- **Keys** arrive as environment variables at run time. For Docker secrets, set `ANTHROPIC_API_KEY_FILE=/run/secrets/<name>` (the same works for `GEMINI`, `OPENAI`, `XAI` and `MCP_AUTH_TOKEN`) and add a `secrets:` entry; the entrypoint reads the file and never prints it.
+- **Token:** unless `MCP_AUTH_TOKEN` is set, one is generated on first start into the `token-data` volume and reused after restarts.
+- **Another host port:** set `MCP_HOST_PORT=9000`. Compose then allows the `Host: 127.0.0.1:9000` header; for other mappings list them in `MCP_ALLOWED_HOSTS`.
+- **Ollama on the host or over Tailscale:** loopback inside a container is the container itself, so name the host and allow it, for example `OLLAMA_MODEL=llama3.2`, `OLLAMA_HOST=http://host.docker.internal:11434` and `AI_ALLOWED_HOSTS=host.docker.internal`.
+- **Provider SDKs:** the image installs the optional peers for Claude, OpenAI and Gemini. For a smaller image use `docker build --build-arg PEER_PACKAGES="" .`
+- The root filesystem is read-only, all capabilities are dropped, and the container log never contains the token or a key.
 
 ### Examples
 
@@ -163,6 +182,7 @@ Set variables in the client's `env` block, the shell, or a git-ignored `.env`. S
 | `MCP_AUTH_TOKEN`                                                              | bearer token (24+ characters). Unset: one is read from or generated into `MCP_TOKEN_FILE`                                                                                           |
 | `MCP_TOKEN_FILE`                                                              | where a generated token is stored, mode `0600` (default `~/.config/ai-providers-mcp/token`)                                                                                         |
 | `MCP_ALLOWED_ORIGINS`                                                         | comma-separated exact origins that may call from a browser, e.g. `chrome-extension://abcdef`                                                                                        |
+| `MCP_ALLOWED_HOSTS`                                                           | comma-separated extra `Host` header values (`host:port`) accepted besides the loopback names, for a published port that differs from the bound one                                  |
 | `MCP_HTTP_HOST`, `MCP_HTTP_ALLOW_NON_LOOPBACK`                                | bind address (default `127.0.0.1`). Anything but loopback is refused unless `MCP_HTTP_ALLOW_NON_LOOPBACK=true`, intended for containers whose port is published on `127.0.0.1` only |
 
 The default Claude model is `claude-sonnet-5-5` with effort `medium` to keep cost low. Override it with `CLAUDE_TEXT_MODEL` or per call. An unknown provider name returns an error listing the valid names. Setting a provider's key (or `OLLAMA_MODEL` for Ollama) enables it. If more than one provider of a kind is enabled, set `AI_TEXT_PROVIDER` / `AI_IMAGE_PROVIDER` so prompts only go where you choose.
@@ -172,7 +192,7 @@ The default Claude model is `claude-sonnet-5-5` with effort `medium` to keep cos
 ## Security
 
 - **stdio** is the default transport. Logs go to stderr only, because stdout carries the protocol.
-- **Streamable HTTP** (`ai-providers-mcp --http`) is for local apps such as a browser-extension bridge. It serves `POST /mcp` only, with JSON requests and JSON responses, and is stateless. On every request it checks, in order: the path, the `Host` header (loopback names only, which blocks DNS rebinding), the `Origin` header against `MCP_ALLOWED_ORIGINS`, the bearer token (constant-time comparison; a token in the URL is never accepted), the content type and the body size. At most 8 requests run at once (more get `429`), and JSON-RPC batches are refused.
+- **Streamable HTTP** (`ai-providers-mcp --http`) is for local apps such as a browser-extension bridge. It serves `POST /mcp` only, with JSON requests and JSON responses, and is stateless. On every request it checks, in order: the path, the `Host` header (loopback names plus any `host:port` values you list in `MCP_ALLOWED_HOSTS`, which blocks DNS rebinding), the `Origin` header against `MCP_ALLOWED_ORIGINS`, the bearer token (constant-time comparison; a token in the URL is never accepted), the content type and the body size. At most 8 requests run at once (more get `429`), and JSON-RPC batches are refused.
 - **Token:** there is no default token. If `MCP_AUTH_TOKEN` is unset, 32 random bytes are generated on first run into `MCP_TOKEN_FILE` (directory `0700`, file `0600`) and reused afterwards. The startup log prints where the token is stored, never the token. A token file that is a symlink, owned by another user, or readable by other users is refused.
 - **Binding:** loopback only. A non-loopback `MCP_HTTP_HOST` is refused unless `MCP_HTTP_ALLOW_NON_LOOPBACK=true`. The connection is plain HTTP, so the token is not encrypted in transit and the server logs a warning when bound beyond loopback. Do not expose the port beyond your machine.
 - **Browsers:** requests without an `Origin` header (CLI clients) are allowed with a valid token. Browser requests need their exact origin in `MCP_ALLOWED_ORIGINS`; there are no wildcards.

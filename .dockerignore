@@ -1,0 +1,22 @@
+# Nothing personal or secret goes into the build context.
+.git
+.github
+.claude
+.changeset
+.env
+.env.*
+!.env.example
+node_modules
+dist
+coverage
+test
+*.log
+*.pem
+Dockerfile
+docker-compose*.yml
+.dockerignore
+README.md
+ROADMAP.md
+CHANGELOG.md
+CLAUDE.md
+donate.svg

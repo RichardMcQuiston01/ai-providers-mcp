@@ -32,7 +32,7 @@ const MAX_BATCH_LENGTH: number = 1;
 export interface HttpServerOptions {
   readonly http: Pick<
     HttpConfig,
-    'host' | 'port' | 'allowedOrigins' | 'allowNonLoopback'
+    'host' | 'port' | 'allowedOrigins' | 'allowedHosts' | 'allowNonLoopback'
   >;
   readonly limits: ServerLimits;
   /** The bearer token. Never logged. */
@@ -97,12 +97,19 @@ function singleHeader(req: IncomingMessage, name: string): string | undefined {
 }
 
 /** Host header values this server answers to; blocks DNS rebinding. */
-function allowedHostValues(host: string, port: number): ReadonlySet<string> {
+function allowedHostValues(
+  host: string,
+  port: number,
+  extra: readonly string[]
+): ReadonlySet<string> {
   const names: string[] = ['127.0.0.1', 'localhost', '[::1]'];
   if (!isLoopbackBindHost(host) && host !== '0.0.0.0' && host !== '::') {
     names.push(host.toLowerCase());
   }
-  return new Set(names.map((name: string): string => `${name}:${port}`));
+  return new Set([
+    ...names.map((name: string): string => `${name}:${port}`),
+    ...extra,
+  ]);
 }
 
 type BodyResult = Result<unknown> & { readonly tooLarge?: boolean };
@@ -356,7 +363,11 @@ export async function startHttpServer(
     });
     server.listen(http.port, http.host, (): void => {
       const address: AddressInfo = server.address() as AddressInfo;
-      allowedHosts = allowedHostValues(http.host, address.port);
+      allowedHosts = allowedHostValues(
+        http.host,
+        address.port,
+        http.allowedHosts
+      );
       resolve(
         ok({
           host: http.host,

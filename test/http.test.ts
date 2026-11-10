@@ -29,6 +29,7 @@ function start(
     maxPromptChars?: number;
     maxImageBytes?: number;
     maxConcurrentRequests?: number;
+    allowedHosts?: readonly string[];
   } = {}
 ): Promise<Result<RunningHttpServer>> {
   return startHttpServer({
@@ -36,6 +37,7 @@ function start(
       host: overrides.host ?? '127.0.0.1',
       port: 0,
       allowedOrigins: [ALLOWED_ORIGIN],
+      allowedHosts: overrides.allowedHosts ?? [],
       allowNonLoopback: overrides.allowNonLoopback ?? false,
     },
     limits: {
@@ -429,5 +431,31 @@ test('requests over the concurrency cap get 429, and capacity frees afterwards',
     assert.equal(third.status, 200);
   } finally {
     await gate.value.close();
+  }
+});
+
+test('MCP_ALLOWED_HOSTS lets a remapped port through and nothing else', async () => {
+  const mapped: Result<RunningHttpServer> = await start({
+    allowedHosts: ['127.0.0.1:9000'],
+  });
+  assert.equal(mapped.ok, true);
+  if (!mapped.ok) return;
+  try {
+    const ok: RawResponse = await raw(
+      'POST',
+      { ...GOOD, host: '127.0.0.1:9000' },
+      INITIALIZE,
+      mapped.value.port
+    );
+    assert.equal(ok.status, 200);
+    const other: RawResponse = await raw(
+      'POST',
+      { ...GOOD, host: '127.0.0.1:9001' },
+      INITIALIZE,
+      mapped.value.port
+    );
+    assert.equal(other.status, 403);
+  } finally {
+    await mapped.value.close();
   }
 });

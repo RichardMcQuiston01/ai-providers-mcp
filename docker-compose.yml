@@ -1,0 +1,66 @@
+# Local use only: the port is published on 127.0.0.1 and nowhere else.
+#
+#   cp .env.example .env     # add your provider keys (never commit .env)
+#   docker compose up -d --build
+#   docker compose exec ai-providers-mcp cat /data/token    # the bearer token
+#
+# Compose reads .env for the ${...} values below. Unset values stay empty, and
+# the server treats an empty value as not set.
+services:
+  ai-providers-mcp:
+    build: .
+    image: ai-providers-mcp:local
+    init: true
+    restart: unless-stopped
+    ports:
+      # Never remove the 127.0.0.1 prefix: it keeps the server off your network.
+      - '127.0.0.1:${MCP_HOST_PORT:-8787}:8787'
+    environment:
+      # Which provider receives your prompts. Required when several keys are set.
+      AI_TEXT_PROVIDER: ${AI_TEXT_PROVIDER:-}
+      AI_IMAGE_PROVIDER: ${AI_IMAGE_PROVIDER:-}
+      # Provider keys, from the environment at run time. To use Docker secrets
+      # instead, set ANTHROPIC_API_KEY_FILE=/run/secrets/<name> (the same works
+      # for GEMINI, OPENAI, XAI and MCP_AUTH_TOKEN) and add a `secrets:` entry.
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      XAI_API_KEY: ${XAI_API_KEY:-}
+      CLAUDE_TEXT_MODEL: ${CLAUDE_TEXT_MODEL:-}
+      GEMINI_TEXT_MODEL: ${GEMINI_TEXT_MODEL:-}
+      OPENAI_TEXT_MODEL: ${OPENAI_TEXT_MODEL:-}
+      # Ollama on the host (see extra_hosts below). Loopback inside a container
+      # is the container itself, so the host must be named and allowed:
+      #   OLLAMA_MODEL=llama3.2
+      #   OLLAMA_HOST=http://host.docker.internal:11434
+      #   AI_ALLOWED_HOSTS=host.docker.internal
+      # For Ollama over Tailscale, put its name or address in both instead.
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-}
+      OLLAMA_HOST: ${OLLAMA_HOST:-}
+      AI_ALLOWED_HOSTS: ${AI_ALLOWED_HOSTS:-}
+      AI_TIMEOUT_MS: ${AI_TIMEOUT_MS:-}
+      AI_MAX_PROMPT_CHARS: ${AI_MAX_PROMPT_CHARS:-}
+      AI_MAX_IMAGES: ${AI_MAX_IMAGES:-}
+      AI_MAX_IMAGE_BYTES: ${AI_MAX_IMAGE_BYTES:-}
+      AI_MAX_OUTPUT_IMAGE_BYTES: ${AI_MAX_OUTPUT_IMAGE_BYTES:-}
+      # Leave MCP_AUTH_TOKEN empty to generate one into the /data volume.
+      MCP_AUTH_TOKEN: ${MCP_AUTH_TOKEN:-}
+      MCP_ALLOWED_ORIGINS: ${MCP_ALLOWED_ORIGINS:-}
+      # Clients send Host: 127.0.0.1:<published port>, so a remapped port
+      # (MCP_HOST_PORT) must be allowed or it gets 403. Extra values from
+      # MCP_ALLOWED_HOSTS in .env are appended.
+      MCP_ALLOWED_HOSTS: '127.0.0.1:${MCP_HOST_PORT:-8787},localhost:${MCP_HOST_PORT:-8787}${MCP_ALLOWED_HOSTS:+,${MCP_ALLOWED_HOSTS}}'
+    volumes:
+      - token-data:/data
+    extra_hosts:
+      - 'host.docker.internal:host-gateway'
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+
+volumes:
+  token-data:

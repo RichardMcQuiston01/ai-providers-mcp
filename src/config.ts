@@ -52,6 +52,8 @@ export interface HttpConfig {
   readonly tokenFilePath: string;
   /** Exact origins a browser may call from, e.g. chrome-extension://abc. */
   readonly allowedOrigins: readonly string[];
+  /** Extra Host header values (host:port) accepted besides the loopback names, e.g. a remapped container port. */
+  readonly allowedHosts: readonly string[];
   readonly allowNonLoopback: boolean;
 }
 
@@ -307,6 +309,25 @@ function readBoolean(env: EnvironmentMap, name: string): Result<boolean> {
 /** An origin is scheme://host[:port] with no path, query or wildcard. */
 const ORIGIN_PATTERN: RegExp = /^[a-z][a-z0-9+.-]*:\/\/[^/\s*?#]+$/;
 
+/** A Host header value is host:port with no scheme, path or wildcard. */
+const HOST_VALUE_PATTERN: RegExp =
+  /^(\[[0-9a-f:.]+\]|[a-z0-9]([a-z0-9.-]*[a-z0-9])?):[0-9]{1,5}$/;
+
+function checkHostValues(values: readonly string[]): Result<readonly string[]> {
+  const normalized: string[] = [];
+  for (const value of values) {
+    const lowered: string = value.toLowerCase();
+    const port: number = Number(lowered.slice(lowered.lastIndexOf(':') + 1));
+    if (!HOST_VALUE_PATTERN.test(lowered) || port < 1 || port > 65_535) {
+      return err(
+        `MCP_ALLOWED_HOSTS: "${value}" is not a Host header value. Use host:port with no scheme, path or wildcard, e.g. 127.0.0.1:9000.`
+      );
+    }
+    normalized.push(lowered);
+  }
+  return ok(normalized);
+}
+
 function checkOrigins(origins: readonly string[]): Result<readonly string[]> {
   const normalized: string[] = [];
   for (const origin of origins) {
@@ -357,6 +378,10 @@ function parseHttpConfig(
     readList(env, 'MCP_ALLOWED_ORIGINS')
   );
   if (!origins.ok) return origins;
+  const hosts: Result<readonly string[]> = checkHostValues(
+    readList(env, 'MCP_ALLOWED_HOSTS')
+  );
+  if (!hosts.ok) return hosts;
   return ok({
     host,
     port,
@@ -364,6 +389,7 @@ function parseHttpConfig(
     tokenFilePath:
       readVariable(env, 'MCP_TOKEN_FILE') ?? defaultTokenFilePath(env),
     allowedOrigins: origins.value,
+    allowedHosts: hosts.value,
     allowNonLoopback: allowNonLoopback.value,
   });
 }
