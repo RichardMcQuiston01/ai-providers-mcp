@@ -21,3 +21,44 @@ jobs:
       - run: bun run format:check
       - run: bun run test
       - run: bun run build
+
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Compose file is valid
+        run: docker compose config --quiet
+      - name: Build the image
+        run: docker build -t ai-providers-mcp:ci .
+      - name: Image runs as a non-root user and holds no .env
+        run: |
+          test "$(docker run --rm --entrypoint id ai-providers-mcp:ci -u)" != "0"
+          docker run --rm --entrypoint sh ai-providers-mcp:ci -c '! test -e /app/.env'
+      - name: Serves MCP behind the bearer token, with the key read from a file
+        run: |
+          printf 'fake-ci-key' > "$RUNNER_TEMP/gemini.key"
+          docker run -d --name mcp -p 127.0.0.1:9000:8787 \
+            -v "$RUNNER_TEMP/gemini.key:/run/secrets/gemini:ro" \
+            -e GEMINI_API_KEY_FILE=/run/secrets/gemini \
+            -e MCP_ALLOWED_HOSTS=127.0.0.1:9000 \
+            ai-providers-mcp:ci
+          for attempt in $(seq 1 30); do
+            code="$(curl -s -o /dev/null -w '%{http_code}' -X POST 127.0.0.1:9000/mcp -H 'content-type: application/json' -d '{}' || true)"
+            [ "$code" = "401" ] && break
+            sleep 1
+          done
+          test "$code" = "401"
+          token="$(docker exec mcp cat /data/token)"
+          code="$(curl -s -o /dev/null -w '%{http_code}' -X POST 127.0.0.1:9000/mcp \
+            -H "authorization: Bearer $token" \
+            -H 'content-type: application/json' \
+            -H 'accept: application/json, text/event-stream' \
+            -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}')"
+          test "$code" = "200"
+          if docker logs mcp 2>&1 | grep -q -e "$token" -e fake-ci-key; then
+            echo "A secret appeared in the container log" >&2
+            exit 1
+          fi
+      - name: Container log on failure
+        if: failure()
+        run: docker logs mcp || true
