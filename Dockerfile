@@ -16,11 +16,11 @@ RUN bun run build
 FROM oven/bun:${BUN_VERSION} AS deps
 WORKDIR /app
 # SDK peers for the hosted providers (Claude, OpenAI, Gemini). Ollama and Grok
-# need none. Build a smaller image with --build-arg PEER_PACKAGES="".
+# need none. `--omit=dev` keeps `bun add` from pulling the dev dependencies back in. Build a smaller image with --build-arg PEER_PACKAGES="".
 ARG PEER_PACKAGES="@anthropic-ai/sdk@0 openai@7 @richardmcquiston01/gemini-icon-gen@0"
 COPY package.json bun.lock ./
 RUN bun install --frozen-lockfile --production \
-  && if [ -n "$PEER_PACKAGES" ]; then bun add $PEER_PACKAGES; fi
+  && if [ -n "$PEER_PACKAGES" ]; then bun add --omit=dev $PEER_PACKAGES; fi
 
 # Stage 3: the runtime image. No keys, .env or source files are copied in.
 FROM node:${NODE_VERSION}-slim AS runtime
