@@ -194,3 +194,24 @@ test('the output image cap has a default and can be set', () => {
     /AI_MAX_OUTPUT_IMAGE_BYTES/
   );
 });
+
+test('MCP_ALLOWED_HOSTS takes host:port values only', () => {
+  const config: ServerConfig = mustParse({
+    MCP_ALLOWED_HOSTS: '127.0.0.1:9000, LOCALHOST:9000, [::1]:9000',
+  });
+  assert.deepEqual(config.http.allowedHosts, [
+    '127.0.0.1:9000',
+    'localhost:9000',
+    '[::1]:9000',
+  ]);
+  assert.deepEqual(mustParse({}).http.allowedHosts, []);
+  for (const bad of [
+    '127.0.0.1',
+    'http://127.0.0.1:9000',
+    '*:9000',
+    'host:99999',
+    'a b:80',
+  ]) {
+    assert.match(mustFail({ MCP_ALLOWED_HOSTS: bad }), /MCP_ALLOWED_HOSTS/);
+  }
+});
