@@ -47,8 +47,9 @@ services:
       MCP_AUTH_TOKEN: ${MCP_AUTH_TOKEN:-}
       MCP_ALLOWED_ORIGINS: ${MCP_ALLOWED_ORIGINS:-}
       # Clients send Host: 127.0.0.1:<published port>, so a remapped port
-      # (MCP_HOST_PORT) must be allowed or it gets 403.
-      MCP_ALLOWED_HOSTS: '127.0.0.1:${MCP_HOST_PORT:-8787},localhost:${MCP_HOST_PORT:-8787}'
+      # (MCP_HOST_PORT) must be allowed or it gets 403. Extra values from
+      # MCP_ALLOWED_HOSTS in .env are appended.
+      MCP_ALLOWED_HOSTS: '127.0.0.1:${MCP_HOST_PORT:-8787},localhost:${MCP_HOST_PORT:-8787}${MCP_ALLOWED_HOSTS:+,${MCP_ALLOWED_HOSTS}}'
     volumes:
       - token-data:/data
     extra_hosts:
