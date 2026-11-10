@@ -1,9 +1,7 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import {
-  checkImageOutput,
   describeUnknownError,
-  fromBase64,
   type AiImage,
   type TextGenerator,
   type TextResult,
@@ -12,15 +10,11 @@ import { z } from 'zod';
 
 import type { ServerLimits } from '../config.js';
 import type { ProviderRegistry } from '../providers.js';
-import { err, ok, type Result } from '../result.js';
+import type { Result } from '../result.js';
+import { buildImagesSchema, decodeImages, withTimeout } from './imageInput.js';
 import { toolError, toolText } from './toolResult.js';
 
 export const GENERATE_TEXT_TOOL: string = 'generate_text';
-
-/** Longest base64 text that can decode to `maxBytes`. */
-function maxBase64Length(maxBytes: number): number {
-  return Math.ceil(maxBytes / 3) * 4;
-}
 
 /**
  * Zod shape built from the operator's limits. All tool input is untrusted.
@@ -57,25 +51,7 @@ export function buildGenerateTextShape(limits: ServerLimits) {
       .max(200)
       .optional()
       .describe('Optional model name for the chosen provider.'),
-    images: z
-      .array(
-        z.object({
-          mimeType: z
-            .string()
-            .max(100)
-            .describe('Declared type; the bytes are checked, not this value.'),
-          data: z
-            .string()
-            .max(
-              maxBase64Length(limits.maxImageBytes),
-              `image data must decode to at most ${limits.maxImageBytes} bytes`
-            )
-            .describe('Base64 image bytes (PNG, JPEG or WebP).'),
-        })
-      )
-      .max(limits.maxImages, `at most ${limits.maxImages} images are allowed`)
-      .optional()
-      .describe('Optional images for vision models.'),
+    images: buildImagesSchema(limits, 'Optional images for vision models.'),
   };
 }
 
@@ -83,47 +59,6 @@ export function buildGenerateTextShape(limits: ServerLimits) {
 export type GenerateTextInput = z.infer<
   z.ZodObject<ReturnType<typeof buildGenerateTextShape>>
 >;
-
-/** Decodes and checks client images: size, then real format from the bytes. */
-export function decodeImages(
-  images: GenerateTextInput['images'],
-  limits: ServerLimits
-): Result<readonly AiImage[]> {
-  const decoded: AiImage[] = [];
-  const list: readonly { mimeType: string; data: string }[] = images ?? [];
-  for (let index: number = 0; index < list.length; index += 1) {
-    const item: { mimeType: string; data: string } | undefined = list[index];
-    if (item === undefined) {
-      continue;
-    }
-    const label: string = `Image ${index + 1}`;
-    const bytes: Uint8Array | null = fromBase64(item.data);
-    if (bytes === null) {
-      return err(`${label}: data is not valid base64.`);
-    }
-    if (bytes.byteLength > limits.maxImageBytes) {
-      return err(
-        `${label}: ${bytes.byteLength} bytes is over the ${limits.maxImageBytes} byte limit.`
-      );
-    }
-    // The declared mimeType is never trusted: the real type comes from the bytes.
-    const checked: Result<AiImage> = checkImageOutput(bytes, label);
-    if (!checked.ok) {
-      return err(`${label}: data is not a PNG, JPEG or WebP image.`);
-    }
-    decoded.push(checked.value);
-  }
-  return ok(decoded);
-}
-
-/** Combines the client's cancellation with the server timeout. */
-function withTimeout(
-  signal: AbortSignal | undefined,
-  timeoutMs: number
-): AbortSignal {
-  const timeout: AbortSignal = AbortSignal.timeout(timeoutMs);
-  return signal === undefined ? timeout : AbortSignal.any([signal, timeout]);
-}
 
 /**
  * Runs one generation. Every failure, including a thrown exception from a

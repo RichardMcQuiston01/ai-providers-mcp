@@ -88,10 +88,11 @@ async function call(
 
 const ENV: Record<string, string> = { ANTHROPIC_API_KEY: 'test-only-key' };
 
-test('the server exposes list_providers and generate_text', async () => {
+test('the server exposes list_providers, generate_text and generate_image', async () => {
   const { client } = await connect(ENV, (p, m) => new FakeTextGenerator(p, m));
   const listed: ListToolsResult = await client.listTools();
   assert.deepEqual(listed.tools.map((tool) => tool.name).sort(), [
+    'generate_image',
     'generate_text',
     'list_providers',
   ]);

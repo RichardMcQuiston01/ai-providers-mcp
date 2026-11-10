@@ -27,6 +27,8 @@ export interface ServerLimits {
   readonly maxPromptChars: number;
   readonly maxImages: number;
   readonly maxImageBytes: number;
+  /** Largest generated image the server will return. */
+  readonly maxOutputImageBytes: number;
   readonly timeoutMs: number;
 }
 
@@ -34,6 +36,7 @@ export const DEFAULT_LIMITS: ServerLimits = {
   maxPromptChars: 100_000,
   maxImages: 4,
   maxImageBytes: 8 * 1024 * 1024,
+  maxOutputImageBytes: 16 * 1024 * 1024,
   timeoutMs: 120_000,
 };
 
@@ -415,6 +418,13 @@ export function parseConfig(
     64 * 1024 * 1024
   );
   if (!maxImageBytes.ok) return maxImageBytes;
+  const maxOutputImageBytes: Result<number> = readPositiveInteger(
+    env,
+    'AI_MAX_OUTPUT_IMAGE_BYTES',
+    DEFAULT_LIMITS.maxOutputImageBytes,
+    64 * 1024 * 1024
+  );
+  if (!maxOutputImageBytes.ok) return maxOutputImageBytes;
   const port: Result<number> = readPositiveInteger(
     env,
     'MCP_HTTP_PORT',
@@ -524,6 +534,7 @@ export function parseConfig(
       maxPromptChars: maxPromptChars.value,
       maxImages: maxImages.value,
       maxImageBytes: maxImageBytes.value,
+      maxOutputImageBytes: maxOutputImageBytes.value,
       timeoutMs: timeout.value,
     },
     http: http.value,

@@ -38,11 +38,12 @@ export class FakeImageGenerator implements ImageGenerator {
     public readonly provider: string = 'fake',
     public readonly model: string = 'fake-image-model',
     private readonly result: ImageResult | null = null,
-    private readonly failureMessage: string | null = null
+    private readonly failureMessage: string | null = null,
+    private readonly modes: readonly string[] = []
   ) {}
 
   public async listModes(): Promise<Result<readonly string[]>> {
-    return ok([]);
+    return ok(this.modes);
   }
 
   public async generateImage(
