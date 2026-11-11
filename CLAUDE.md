@@ -23,16 +23,13 @@ a browser-extension bridge (HTTP, if added; see Open decisions).
 
 ## Status
 
-New repo; the scaffold has not been created yet. Build in this order:
+Stages 0 to 5 of `ROADMAP.md` are built: config and providers, MCP over
+stdio, Streamable HTTP, `generate_image` and Docker. Stage 6 is the release
+(`0.1.0`). Remaining by hand, because they need real keys: `bun run
+live-check` (not written yet) against one hosted and one local provider, and
+a `claude mcp add` smoke test.
 
-1. Config loading and provider construction (`src/config.ts`).
-2. MCP tools over stdio: `list_providers`, `generate_text`.
-3. Streamable HTTP transport (localhost, bearer token).
-4. `generate_image`.
-5. Dockerfile and compose file.
-6. README, LICENSE, disclaimers, changeset, first release.
-
-## Tools (planned)
+## Tools
 
 | Tool             | Input                                                            | Output                                     |
 | ---------------- | ---------------------------------------------------------------- | ------------------------------------------ |
@@ -47,17 +44,19 @@ New repo; the scaffold has not been created yet. Build in this order:
 - `provider` and `model` may only select among providers the operator
   configured. Never let a client supply an API key or a host.
 
-## Layout (planned)
+## Layout
 
 ```
 src/
-  index.ts       entry: picks transport from CLI flag or env
-  config.ts      the ONLY file that reads process.env; returns Result<ServerConfig>
+  index.ts       entry: --http / MCP_TRANSPORT picks the transport; logs to stderr
+  config.ts      the ONLY file that reads process.env (and process signals/exit code); returns Result<ServerConfig>
   providers.ts   builds generators from config with createTextGenerator/createImageGenerator
-  tools/         one file per tool: schema, handler, registration
-  transports/    stdio.ts, http.ts (bearer auth, origin allow list, 127.0.0.1 bind)
+  server.ts      builds the McpServer and registers the tools
+  tools/         one file per tool: schema, handler, registration; imageInput.ts is shared
+  transports/    stdio.ts, http.ts (bearer auth, Host/Origin checks, 127.0.0.1 bind), token.ts
   result.ts      re-export Result helpers from ai-providers; do not redefine
 test/            node:test + node:assert, run by bun test; fake generators, no network
+Dockerfile, docker-compose.yml, docker-entrypoint.sh
 ```
 
 ## Rules
@@ -92,7 +91,9 @@ test/            node:test + node:assert, run by bun test; fake generators, no n
 - **Optional peers.** Install an SDK peer (`@anthropic-ai/sdk`, `openai`,
   `@richardmcquiston01/gemini-icon-gen`) only for providers that need one.
   A missing peer is a `Result` error naming the package, never an import
-  crash.
+  crash. `npx` does not install optional peers, so the README tells users to
+  add one with `npx -y -p ai-providers-mcp -p <sdk> ai-providers-mcp`. Grok
+  text needs `openai`; Grok images, Ollama and the HTTP transport need none.
 - **No database in v1.** If persistence is added later, use Prisma with
   singular table names, snake_case columns, UUID primary keys, and
   `created_at` / `updated_at` on non-join tables.
@@ -103,14 +104,21 @@ test/            node:test + node:assert, run by bun test; fake generators, no n
 Environment variables (a git-ignored `.env`; Bun loads it). Keep
 `.env.example` current and never commit `.env`.
 
-| Variable                                                                      | Purpose                                              |
-| ----------------------------------------------------------------------------- | ---------------------------------------------------- |
-| `AI_TEXT_PROVIDER`                                                            | default text provider name (`claude`, `gemini`, ...) |
-| `AI_IMAGE_PROVIDER`                                                           | default image provider name                          |
-| `ANTHROPIC_API_KEY`, `GEMINI_API_KEY`, `OPENAI_API_KEY`, `XAI_API_KEY`        | provider keys                                        |
-| `CLAUDE_TEXT_MODEL`, `GEMINI_TEXT_MODEL`, `OPENAI_TEXT_MODEL`, `OLLAMA_MODEL` | model overrides                                      |
-| `OLLAMA_HOST` (and similar local hosts)                                       | local server URL; loopback unless allowed            |
-| `MCP_HTTP_PORT`, `MCP_AUTH_TOKEN`, `MCP_ALLOWED_ORIGINS`                      | HTTP transport                                       |
+| Variable                                                                      | Purpose                                                                               |
+| ----------------------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
+| `AI_TEXT_PROVIDER`                                                            | default text provider name (`claude`, `gemini`, ...); required if several are enabled |
+| `AI_IMAGE_PROVIDER`                                                           | default image provider name                                                           |
+| `ANTHROPIC_API_KEY`, `GEMINI_API_KEY`, `OPENAI_API_KEY`, `XAI_API_KEY`        | provider keys (a key enables its provider)                                            |
+| `CLAUDE_TEXT_MODEL`, `GEMINI_TEXT_MODEL`, `OPENAI_TEXT_MODEL`, `OLLAMA_MODEL` | model overrides (`OLLAMA_MODEL` also enables Ollama)                                  |
+| `OLLAMA_HOST`, `AI_ALLOWED_HOSTS`                                             | local server URL; loopback unless the host is in the allow list                       |
+| `AI_TIMEOUT_MS`                                                               | per-call timeout                                                                      |
+| `AI_MAX_PROMPT_CHARS`, `AI_MAX_IMAGES`, `AI_MAX_IMAGE_BYTES`                  | input limits                                                                          |
+| `AI_MAX_OUTPUT_IMAGE_BYTES`                                                   | largest generated image returned                                                      |
+| `MCP_TRANSPORT` (or `--http`)                                                 | `stdio` (default) or `http`                                                           |
+| `MCP_HTTP_PORT`, `MCP_HTTP_HOST`, `MCP_HTTP_ALLOW_NON_LOOPBACK`               | HTTP bind; non-loopback only inside a container                                       |
+| `MCP_AUTH_TOKEN`, `MCP_TOKEN_FILE`                                            | bearer token, or where a generated one is stored (mode 0600)                          |
+| `MCP_ALLOWED_ORIGINS`, `MCP_ALLOWED_HOSTS`                                    | exact browser origins; extra `Host` header values (`host:port`)                       |
+| `MCP_HOST_PORT`                                                               | docker compose only: the published host port                                          |
 
 - Default Claude model in this server is `claude-sonnet-5-5` with effort
   `medium`, not the `ai-providers` default (`claude-opus-5-5`), to keep
@@ -151,10 +159,13 @@ bun run changeset
 
 - Multi-stage build; run as a non-root user; no keys, `.env` or personal
   files baked into the image.
-- Keys arrive as environment variables or Docker secrets at run time.
+- Keys arrive as environment variables or Docker secrets at run time
+  (`NAME_FILE=/run/secrets/x`, read by `docker-entrypoint.sh`).
 - `docker-compose.yml` publishes the port on `127.0.0.1` only.
 - To reach Ollama on the host or over Tailscale, pass its URL and allow the
   host explicitly; loopback is the default.
+- A published port that differs from the bound one needs `MCP_ALLOWED_HOSTS`
+  (compose sets it from `MCP_HOST_PORT`).
 
 ## Git and releases
 
@@ -172,7 +183,7 @@ bun run changeset
 - License Apache-2.0. Funding link in `package.json` and README follows the
   Ko-fi convention used in `ai-providers`.
 - Pin `@richardmcquiston01/ai-providers` to a compatible range (currently
-  `^0.5`) and note the version in the changelog when it changes.
+  `^0.5.4`, the first release whose `checkImageInput` checks the bytes) and note the version in the changelog when it changes.
 - Run a secret scan before the first push; repo history is public.
 
 ## README and legal
@@ -197,6 +208,7 @@ bun run changeset
 - Whether `generate_text` should offer an optional JSON-output helper
   (validate against a client-supplied JSON Schema, one retry). `ai-providers`
   returns plain text only.
-- Image tool payload limits for base64 over MCP.
+- Image payload limits: decided in Stage 4. Input stays at 4 images and 8 MiB
+  each; generated images have their own cap (`AI_MAX_OUTPUT_IMAGE_BYTES`).
 
 Never commit secrets or tokens.

@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
@@ -25,7 +26,7 @@ import {
   createProviderRegistry,
   type ProviderRegistry,
 } from '../src/providers.js';
-import { createServer } from '../src/server.js';
+import { createServer, SERVER_VERSION } from '../src/server.js';
 import { FakeImageGenerator, FakeTextGenerator } from './fakes.js';
 
 // A 1x1 PNG, the smallest real image the format check accepts.
@@ -248,4 +249,13 @@ test('oversize image data is rejected before decoding', async () => {
 
 test('the default limits are the documented ones', () => {
   assert.equal(DEFAULT_LIMITS.maxImages, 4);
+});
+
+test('the MCP handshake reports the version from package.json', async () => {
+  const pkg: { version: string } = JSON.parse(
+    readFileSync(new URL('../package.json', import.meta.url), 'utf8')
+  ) as { version: string };
+  assert.equal(SERVER_VERSION, pkg.version);
+  const { client } = await connect(ENV, (p, m) => new FakeTextGenerator(p, m));
+  assert.equal(client.getServerVersion()?.version, pkg.version);
 });
