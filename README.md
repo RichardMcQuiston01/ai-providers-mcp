@@ -8,13 +8,13 @@
 
 ## Table of Contents
 
-| [Overview](#overview) | [Status](#status) | [Getting Started](#getting-started) | [Tools](#tools) | [Configuration](#configuration) | [Security](#security) | [Privacy](#privacy) | [Disclaimer](#disclaimer) | [Buy Me a Coffee](#buy-me-a-coffee) | [License](#license) | [Copyright](#copyright) |
+| [Overview](#overview) | [Status](#status) | [Getting Started](#getting-started) | [Providers](#providers) | [Tools](#tools) | [Configuration](#configuration) | [Security](#security) | [Privacy](#privacy) | [Disclaimer](#disclaimer) | [Buy Me a Coffee](#buy-me-a-coffee) | [License](#license) | [Copyright](#copyright) |
 
 ## Overview
 
-A TypeScript [MCP](https://modelcontextprotocol.io/) server that routes text and image generation to swappable AI providers (Claude, Gemini, OpenAI, Grok, Ollama and other local servers) through [`@richardmcquiston01/ai-providers`](https://github.com/RichardMcQuiston01/ai-providers).
+A TypeScript [MCP](https://modelcontextprotocol.io/) server that routes text and image generation to swappable AI providers (Claude, Gemini, OpenAI, Grok and Ollama) through [`@richardmcquiston01/ai-providers`](https://github.com/RichardMcQuiston01/ai-providers).
 
-The provider is chosen in configuration, so a client calls the same tool whether the model behind it is hosted or local. The server is intentionally generic: it generates text and images. Prompt rules, output checks and the decision to use a result belong to the client.
+The provider is chosen in configuration, so a client calls the same tool whether the model behind it is hosted or local. The server is intentionally generic: it generates text and images. Prompt rules, output checks and the decision to use a result belong to the client. More providers from `@richardmcquiston01/ai-providers` (OpenRouter, LM Studio, vLLM, llama.cpp, ComfyUI and others) can be added; see [ROADMAP.md](ROADMAP.md).
 
 > **Not related to the unscoped npm package [`ai-providers`](https://www.npmjs.com/package/ai-providers)**, which is published by a different maintainer.
 
@@ -24,7 +24,7 @@ Typical clients are Claude Desktop and Claude Code (MCP over stdio), and local a
 
 ## Status
 
-Pre-release. `list_providers`, `generate_text` and `generate_image` work over stdio and Streamable HTTP (local only, bearer token). A Docker image and compose file are included. See [ROADMAP.md](ROADMAP.md) for what is left. Details below may change before the first release (`0.1.0`).
+Version 0.1: `list_providers`, `generate_text` and `generate_image` work over stdio and Streamable HTTP (local only, bearer token), and a Docker image and compose file are included. The tool inputs and settings may still change between `0.x` releases; changes are listed in [CHANGELOG.md](CHANGELOG.md). It requires `@richardmcquiston01/ai-providers` 0.5.4 or later in the 0.5 line.
 
 [Back to Top](#table-of-contents)
 
@@ -34,11 +34,29 @@ Pre-release. `list_providers`, `generate_text` and `generate_image` work over st
 
 - [Bun](https://bun.sh/) for development. Node.js 20 or later to run the published package.
 - Your own API key for each hosted provider you want to use. Keys are never bundled. Local providers such as Ollama need no key.
-- Optional SDK peers, installed only for providers that need them: `@anthropic-ai/sdk`, `openai`, `@richardmcquiston01/gemini-icon-gen`. A missing peer is reported as an error naming the package.
+- The SDK for each hosted provider you use (see [Providers](#providers)). They are optional and not bundled; a missing one is reported as an error naming the package.
+
+### Providers
+
+| Provider | Text | Image | Enabled by          | SDK to install                        |
+| -------- | ---- | ----- | ------------------- | ------------------------------------- |
+| `claude` | yes  | no    | `ANTHROPIC_API_KEY` | `@anthropic-ai/sdk`                   |
+| `gemini` | yes  | yes   | `GEMINI_API_KEY`    | `@richardmcquiston01/gemini-icon-gen` |
+| `openai` | yes  | yes   | `OPENAI_API_KEY`    | `openai`                              |
+| `grok`   | yes  | yes   | `XAI_API_KEY`       | `openai` for text; none for images    |
+| `ollama` | yes  | no    | `OLLAMA_MODEL`      | none                                  |
+
+Prompts and images go only to the provider you choose with `AI_TEXT_PROVIDER` / `AI_IMAGE_PROVIDER` (required when more than one is enabled).
 
 ### Installation
 
-Once published, no install is needed; MCP clients can run it with `npx -y ai-providers-mcp`.
+MCP clients run the server with `npx`. `npx` does not install the optional SDK, so add it with a second `-p` for the provider you use, for example `@anthropic-ai/sdk` for Claude:
+
+```bash
+npx -y -p ai-providers-mcp -p @anthropic-ai/sdk ai-providers-mcp
+```
+
+Ollama needs no SDK, and neither does Grok image generation, so `npx -y ai-providers-mcp` is enough for those.
 
 From source:
 
@@ -46,19 +64,27 @@ From source:
 git clone https://github.com/RichardMcQuiston01/ai-providers-mcp.git
 cd ai-providers-mcp
 bun install
+bun add @anthropic-ai/sdk   # or the SDK your provider needs
 bun run build
 ```
 
 ### Usage
 
-Claude Desktop (`claude_desktop_config.json`):
+The examples use Claude; swap the SDK and key for your provider. Claude Desktop (`claude_desktop_config.json`):
 
 ```json
 {
   "mcpServers": {
     "ai-providers": {
       "command": "npx",
-      "args": ["-y", "ai-providers-mcp"],
+      "args": [
+        "-y",
+        "-p",
+        "ai-providers-mcp",
+        "-p",
+        "@anthropic-ai/sdk",
+        "ai-providers-mcp"
+      ],
       "env": {
         "AI_TEXT_PROVIDER": "claude",
         "ANTHROPIC_API_KEY": "your-key-here"
@@ -71,7 +97,7 @@ Claude Desktop (`claude_desktop_config.json`):
 Claude Code:
 
 ```bash
-claude mcp add ai-providers --env AI_TEXT_PROVIDER=claude --env ANTHROPIC_API_KEY=your-key-here -- npx -y ai-providers-mcp
+claude mcp add ai-providers --env AI_TEXT_PROVIDER=claude --env ANTHROPIC_API_KEY=your-key-here -- npx -y -p ai-providers-mcp -p @anthropic-ai/sdk ai-providers-mcp
 ```
 
 Streamable HTTP (local apps):
@@ -79,7 +105,7 @@ Streamable HTTP (local apps):
 ```bash
 MCP_ALLOWED_ORIGINS=chrome-extension://your-extension-id \
 ANTHROPIC_API_KEY=your-key-here \
-npx -y ai-providers-mcp --http
+npx -y -p ai-providers-mcp -p @anthropic-ai/sdk ai-providers-mcp --http
 ```
 
 The server logs where the bearer token is stored. Send it as `Authorization: Bearer <token>` to `http://127.0.0.1:8787/mcp`.
@@ -204,7 +230,7 @@ The default Claude model is `claude-sonnet-5-5` with effort `medium` to keep cos
 
 ## Privacy
 
-Each user supplies their own provider keys. Prompts and images are sent to whichever hosted provider is configured (Anthropic, Google, OpenAI, xAI). They stay on your machine or network only when you use Ollama or another local server.
+Each user supplies their own provider keys. Prompts and images are sent to whichever hosted provider is configured (Anthropic, Google, OpenAI, xAI). They stay on your machine or network only when you use Ollama.
 
 [Back to Top](#table-of-contents)
 

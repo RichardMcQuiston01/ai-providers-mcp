@@ -9,6 +9,18 @@ Multi-stage, multi-agent plan for `ai-providers-mcp`. Derived from [CLAUDE.md](C
 - Gate for every stage: `bun run typecheck`, `bun run lint`, `bun run format`, `bun run test` all green; no `console.log`; no `process` outside `src/config.ts`; no credentials in code, logs or errors.
 - Agents return `Result<T>` values and never throw across module boundaries.
 
+## Progress
+
+| Stage                  | Branch                     | State                                                         |
+| ---------------------- | -------------------------- | ------------------------------------------------------------- |
+| 0 Foundation           | `feature/scaffold`         | merged                                                        |
+| 1 Config and providers | `feature/config-providers` | merged                                                        |
+| 2 MCP over stdio       | `feature/stdio-text-tools` | merged                                                        |
+| 3 Streamable HTTP      | `feature/http-transport`   | merged (independent security review done)                     |
+| 4 Image generation     | `feature/generate-image`   | merged; live check against real providers still to do by hand |
+| 5 Docker               | `feature/docker`           | merged; image built and smoke-tested in CI                    |
+| 6 Release              | `feature/release-0.1.0`    | in progress                                                   |
+
 ## Agent roles
 
 | Agent        | Owns                                                 | Responsibility                                                     |
