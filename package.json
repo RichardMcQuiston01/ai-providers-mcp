@@ -1,6 +1,6 @@
 {
   "name": "ai-providers-mcp",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "MCP server that routes text and image generation to swappable AI providers (Claude, Gemini, OpenAI, Grok and Ollama) via @richardmcquiston01/ai-providers.",
   "keywords": [
     "mcp",
