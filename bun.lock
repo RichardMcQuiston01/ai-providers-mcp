@@ -6,7 +6,7 @@
       "name": "ai-providers-mcp",
       "dependencies": {
         "@modelcontextprotocol/sdk": "^1.32.2",
-        "@richardmcquiston01/ai-providers": "^0.5",
+        "@richardmcquiston01/ai-providers": "^0.5.4",
         "zod": "^4.6.7",
       },
       "devDependencies": {
@@ -102,7 +102,7 @@
 
     "@pnpm/deps.graph-sequencer": ["@pnpm/deps.graph-sequencer@1100.0.1", "", {}, "sha512-pOr5+q1fLYKwFN3LAJuGZEnfXDcQ73zqgDHMtGy+K+uIoUqyY+6MeDCWFwfu+4EFuq76I5EPFofoNAI+Bmmq4A=="],
 
-    "@richardmcquiston01/ai-providers": ["@richardmcquiston01/ai-providers@0.5.3", "", { "peerDependencies": { "@anthropic-ai/sdk": ">=0.133.0 <1", "@richardmcquiston01/gemini-icon-gen": ">=0.3.0 <1", "openai": ">=7.34.0 <8" }, "optionalPeers": ["@anthropic-ai/sdk", "@richardmcquiston01/gemini-icon-gen", "openai"] }, "sha512-a02h7iIxDcbhBBlWPpjHpZgdGvOqLzGeLGHDQgHhsnfUKSH7qZ9dqStW9k9y1mpJqZ50Y83PjiGi2nIGA70JGw=="],
+    "@richardmcquiston01/ai-providers": ["@richardmcquiston01/ai-providers@0.5.4", "", { "peerDependencies": { "@anthropic-ai/sdk": ">=0.133.0 <1", "@richardmcquiston01/gemini-icon-gen": ">=0.3.0 <1", "openai": ">=7.34.0 <8" }, "optionalPeers": ["@anthropic-ai/sdk", "@richardmcquiston01/gemini-icon-gen", "openai"] }, "sha512-K49S3CEjBPvweZ0ciwKwVmXK5p9gvYzqnVEpIF9/tTW9U4ZDC/WJvS6RLi9rIPpyXRNaSyMnyAUUlRJQsZollg=="],
 
     "@types/bun": ["@types/bun@1.4.4", "", { "dependencies": { "bun-types": "1.4.4" } }, "sha512-9wkRDXUXK124pEnAutE6n/l18j+i9GC5IAHK8TmX/2nlySETmky0OU6yL5U8pW1AoKh++AN9auDCr647BfurjQ=="],
 
