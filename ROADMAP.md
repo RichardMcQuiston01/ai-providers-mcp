@@ -11,15 +11,15 @@ Multi-stage, multi-agent plan for `ai-providers-mcp`. Derived from [CLAUDE.md](C
 
 ## Progress
 
-| Stage                  | Branch                     | State                                                              |
-| ---------------------- | -------------------------- | ------------------------------------------------------------------ |
-| 0 Foundation           | `feature/scaffold`         | merged                                                             |
-| 1 Config and providers | `feature/config-providers` | merged                                                             |
-| 2 MCP over stdio       | `feature/stdio-text-tools` | merged                                                             |
-| 3 Streamable HTTP      | `feature/http-transport`   | merged (independent security review done)                          |
-| 4 Image generation     | `feature/generate-image`   | merged; live check against real providers still to do by hand      |
-| 5 Docker               | `feature/docker`           | merged; image built and smoke-tested in CI                         |
-| 6 Release              | `feature/release-0.1.0`    | merged; 0.1.0 bump done, waiting on dev to main and the v0.1.0 tag |
+| Stage                  | Branch                     | State                                                                                                                |
+| ---------------------- | -------------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| 0 Foundation           | `feature/scaffold`         | merged                                                                                                               |
+| 1 Config and providers | `feature/config-providers` | merged                                                                                                               |
+| 2 MCP over stdio       | `feature/stdio-text-tools` | merged                                                                                                               |
+| 3 Streamable HTTP      | `feature/http-transport`   | merged (independent security review done)                                                                            |
+| 4 Image generation     | `feature/generate-image`   | merged; live check against real providers still to do by hand                                                        |
+| 5 Docker               | `feature/docker`           | merged; image built and smoke-tested in CI                                                                           |
+| 6 Release              | `feature/release-0.1.0`    | released: `ai-providers-mcp@0.1.0` is on npm with provenance (live check against real providers still to do by hand) |
 
 ## Agent roles
 
