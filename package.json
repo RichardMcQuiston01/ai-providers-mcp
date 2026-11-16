@@ -32,7 +32,7 @@
   "type": "module",
   "main": "./dist/index.js",
   "bin": {
-    "ai-providers-mcp": "./dist/index.js"
+    "ai-providers-mcp": "dist/index.js"
   },
   "files": [
     "dist",
