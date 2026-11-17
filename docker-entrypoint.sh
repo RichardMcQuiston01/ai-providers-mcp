@@ -4,7 +4,7 @@
 # the value from that file. Only variable names are ever printed, never values.
 set -eu
 
-for name in ANTHROPIC_API_KEY GEMINI_API_KEY OPENAI_API_KEY XAI_API_KEY MCP_AUTH_TOKEN; do
+for name in ANTHROPIC_API_KEY GEMINI_API_KEY OPENAI_API_KEY XAI_API_KEY OPENROUTER_API_KEY LMSTUDIO_API_KEY VLLM_API_KEY LLAMACPP_API_KEY OPENAI_COMPATIBLE_API_KEY MCP_AUTH_TOKEN; do
   file_variable="${name}_FILE"
   eval "file_path=\${${file_variable}:-}"
   eval "current_value=\${${name}:-}"

@@ -107,6 +107,82 @@ test('a remote ollama host works once it is explicitly allowed', () => {
   assert.equal(config.textProviders[0]?.name, 'ollama');
 });
 
+test('openrouter is enabled by its key and is text only', () => {
+  const config: ServerConfig = mustParse({
+    OPENROUTER_API_KEY: 'k',
+    OPENROUTER_MODEL: 'anthropic/claude-sonnet-5-5',
+  });
+  assert.equal(config.defaultTextProvider, 'openrouter');
+  assert.equal(config.imageProviders.length, 0);
+  const settings: TextProviderConfig | undefined =
+    config.textProviders[0]?.config;
+  assert.equal(settings?.provider, 'openrouter');
+  assert.equal(
+    settings !== undefined && 'model' in settings ? settings.model : null,
+    'anthropic/claude-sonnet-5-5'
+  );
+});
+
+test('lmstudio, vllm and llamacpp are enabled by their model variables', () => {
+  const config: ServerConfig = mustParse({
+    LMSTUDIO_MODEL: 'qwen',
+    VLLM_MODEL: 'llama',
+    LLAMACPP_MODEL: 'gguf',
+    AI_TEXT_PROVIDER: 'vllm',
+  });
+  assert.deepEqual(
+    config.textProviders.map((entry): string => entry.name),
+    ['lmstudio', 'vllm', 'llamacpp']
+  );
+  assert.equal(config.defaultTextProvider, 'vllm');
+});
+
+test('local servers stay on loopback unless allowed, and name the variable', () => {
+  for (const prefix of ['LMSTUDIO', 'VLLM', 'LLAMACPP']) {
+    const message: string = mustFail({
+      [`${prefix}_MODEL`]: 'm',
+      [`${prefix}_HOST`]: 'http://gpu-box:1234',
+    });
+    assert.match(message, new RegExp(`${prefix}_HOST`));
+    assert.match(message, /AI_ALLOWED_HOSTS/);
+  }
+  const config: ServerConfig = mustParse({
+    LMSTUDIO_MODEL: 'm',
+    LMSTUDIO_HOST: 'http://gpu-box:1234',
+    AI_ALLOWED_HOSTS: 'gpu-box',
+  });
+  assert.equal(config.textProviders[0]?.name, 'lmstudio');
+});
+
+test('a local server key is passed to the provider and never logged', () => {
+  const config: ServerConfig = mustParse({
+    VLLM_MODEL: 'm',
+    VLLM_API_KEY: 'super-secret-local-key',
+  });
+  const settings: TextProviderConfig | undefined =
+    config.textProviders[0]?.config;
+  assert.equal(
+    settings !== undefined && 'apiKey' in settings ? settings.apiKey : null,
+    'super-secret-local-key'
+  );
+  assert.doesNotMatch(describeConfig(config), /super-secret/);
+});
+
+test('openai-compatible needs a host and an allowed one', () => {
+  const missing: string = mustFail({ OPENAI_COMPATIBLE_MODEL: 'm' });
+  assert.match(missing, /OPENAI_COMPATIBLE_HOST/);
+  const remote: string = mustFail({
+    OPENAI_COMPATIBLE_MODEL: 'm',
+    OPENAI_COMPATIBLE_HOST: 'http://jan.example:1337',
+  });
+  assert.match(remote, /AI_ALLOWED_HOSTS/);
+  const config: ServerConfig = mustParse({
+    OPENAI_COMPATIBLE_MODEL: 'm',
+    OPENAI_COMPATIBLE_HOST: 'http://127.0.0.1:1337',
+  });
+  assert.equal(config.defaultTextProvider, 'openai-compatible');
+});
+
 test('invalid numbers and model names are rejected with the variable name', () => {
   assert.match(mustFail({ AI_TIMEOUT_MS: 'soon' }), /AI_TIMEOUT_MS/);
   assert.match(mustFail({ MCP_HTTP_PORT: '70000' }), /MCP_HTTP_PORT/);

@@ -9,7 +9,7 @@ generation to swappable AI providers through
 [`@richardmcquiston01/ai-providers`](https://github.com/RichardMcQuiston01/ai-providers)
 (`TextGenerator` and `ImageGenerator` interfaces). The provider is chosen in
 configuration, so a client calls the same tool whether the model is Claude,
-Gemini, OpenAI, Grok, Ollama or another local server.
+Gemini, OpenAI, Grok, OpenRouter, Ollama, LM Studio, vLLM, llama.cpp or another local server.
 
 It is generic on purpose. It is not a resume tool, a captioning tool or
 anything consumer-specific. Prompt rules, output checks and the decision to
@@ -93,7 +93,8 @@ Dockerfile, docker-compose.yml, docker-entrypoint.sh
   A missing peer is a `Result` error naming the package, never an import
   crash. `npx` does not install optional peers, so the README tells users to
   add one with `npx -y -p ai-providers-mcp -p <sdk> ai-providers-mcp`. Grok
-  text needs `openai`; Grok images, Ollama and the HTTP transport need none.
+  text, OpenRouter, LM Studio, vLLM, llama.cpp and `openai-compatible` need
+  `openai`; Grok images, Ollama and the HTTP transport need none.
 - **No database in v1.** If persistence is added later, use Prisma with
   singular table names, snake_case columns, UUID primary keys, and
   `created_at` / `updated_at` on non-join tables.
@@ -104,21 +105,23 @@ Dockerfile, docker-compose.yml, docker-entrypoint.sh
 Environment variables (a git-ignored `.env`; Bun loads it). Keep
 `.env.example` current and never commit `.env`.
 
-| Variable                                                                      | Purpose                                                                               |
-| ----------------------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
-| `AI_TEXT_PROVIDER`                                                            | default text provider name (`claude`, `gemini`, ...); required if several are enabled |
-| `AI_IMAGE_PROVIDER`                                                           | default image provider name                                                           |
-| `ANTHROPIC_API_KEY`, `GEMINI_API_KEY`, `OPENAI_API_KEY`, `XAI_API_KEY`        | provider keys (a key enables its provider)                                            |
-| `CLAUDE_TEXT_MODEL`, `GEMINI_TEXT_MODEL`, `OPENAI_TEXT_MODEL`, `OLLAMA_MODEL` | model overrides (`OLLAMA_MODEL` also enables Ollama)                                  |
-| `OLLAMA_HOST`, `AI_ALLOWED_HOSTS`                                             | local server URL; loopback unless the host is in the allow list                       |
-| `AI_TIMEOUT_MS`                                                               | per-call timeout                                                                      |
-| `AI_MAX_PROMPT_CHARS`, `AI_MAX_IMAGES`, `AI_MAX_IMAGE_BYTES`                  | input limits                                                                          |
-| `AI_MAX_OUTPUT_IMAGE_BYTES`                                                   | largest generated image returned                                                      |
-| `MCP_TRANSPORT` (or `--http`)                                                 | `stdio` (default) or `http`                                                           |
-| `MCP_HTTP_PORT`, `MCP_HTTP_HOST`, `MCP_HTTP_ALLOW_NON_LOOPBACK`               | HTTP bind; non-loopback only inside a container                                       |
-| `MCP_AUTH_TOKEN`, `MCP_TOKEN_FILE`                                            | bearer token, or where a generated one is stored (mode 0600)                          |
-| `MCP_ALLOWED_ORIGINS`, `MCP_ALLOWED_HOSTS`                                    | exact browser origins; extra `Host` header values (`host:port`)                       |
-| `MCP_HOST_PORT`                                                               | docker compose only: the published host port                                          |
+| Variable                                                                               | Purpose                                                                                             |
+| -------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
+| `AI_TEXT_PROVIDER`                                                                     | default text provider name (`claude`, `gemini`, ...); required if several are enabled               |
+| `AI_IMAGE_PROVIDER`                                                                    | default image provider name                                                                         |
+| `ANTHROPIC_API_KEY`, `GEMINI_API_KEY`, `OPENAI_API_KEY`, `XAI_API_KEY`                 | provider keys (a key enables its provider)                                                          |
+| `CLAUDE_TEXT_MODEL`, `GEMINI_TEXT_MODEL`, `OPENAI_TEXT_MODEL`, `OLLAMA_MODEL`          | model overrides (`OLLAMA_MODEL` also enables Ollama)                                                |
+| `OPENROUTER_API_KEY`, `OPENROUTER_MODEL`                                               | OpenRouter (text only)                                                                              |
+| `LMSTUDIO_`, `VLLM_`, `LLAMACPP_`, `OPENAI_COMPATIBLE_` + `MODEL` / `HOST` / `API_KEY` | local OpenAI-protocol servers; the model variable enables one; `OPENAI_COMPATIBLE_HOST` is required |
+| `OLLAMA_HOST`, `AI_ALLOWED_HOSTS`                                                      | local server URL; loopback unless the host is in the allow list                                     |
+| `AI_TIMEOUT_MS`                                                                        | per-call timeout                                                                                    |
+| `AI_MAX_PROMPT_CHARS`, `AI_MAX_IMAGES`, `AI_MAX_IMAGE_BYTES`                           | input limits                                                                                        |
+| `AI_MAX_OUTPUT_IMAGE_BYTES`                                                            | largest generated image returned                                                                    |
+| `MCP_TRANSPORT` (or `--http`)                                                          | `stdio` (default) or `http`                                                                         |
+| `MCP_HTTP_PORT`, `MCP_HTTP_HOST`, `MCP_HTTP_ALLOW_NON_LOOPBACK`                        | HTTP bind; non-loopback only inside a container                                                     |
+| `MCP_AUTH_TOKEN`, `MCP_TOKEN_FILE`                                                     | bearer token, or where a generated one is stored (mode 0600)                                        |
+| `MCP_ALLOWED_ORIGINS`, `MCP_ALLOWED_HOSTS`                                             | exact browser origins; extra `Host` header values (`host:port`)                                     |
+| `MCP_HOST_PORT`                                                                        | docker compose only: the published host port                                                        |
 
 - Default Claude model in this server is `claude-sonnet-5-5` with effort
   `medium`, not the `ai-providers` default (`claude-opus-5-5`), to keep
