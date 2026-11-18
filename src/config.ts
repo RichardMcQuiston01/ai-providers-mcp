@@ -156,7 +156,7 @@ function readList(env: EnvironmentMap, name: string): readonly string[] {
 
 /** A key-based hosted provider: enabled when its key is set. */
 interface HostedSpec {
-  readonly name: 'claude' | 'gemini' | 'openai' | 'grok';
+  readonly name: 'claude' | 'gemini' | 'openai' | 'grok' | 'openrouter';
   readonly keyVariable: string;
   readonly modelVariable: string | null;
   readonly textCapable: boolean;
@@ -193,7 +193,107 @@ const HOSTED_PROVIDERS: readonly HostedSpec[] = [
     textCapable: true,
     imageCapable: true,
   },
+  {
+    name: 'openrouter',
+    keyVariable: 'OPENROUTER_API_KEY',
+    modelVariable: 'OPENROUTER_MODEL',
+    textCapable: true,
+    imageCapable: false,
+  },
 ];
+
+/** A local text server: enabled when its model variable is set. */
+interface LocalSpec {
+  readonly name:
+    'ollama' | 'lmstudio' | 'vllm' | 'llamacpp' | 'openai-compatible';
+  readonly modelVariable: string;
+  readonly hostVariable: string;
+  /** Optional bearer key, for servers started with one. Null for Ollama. */
+  readonly apiKeyVariable: string | null;
+  /** True when the server has no usual port to assume. */
+  readonly hostRequired: boolean;
+}
+
+const LOCAL_PROVIDERS: readonly LocalSpec[] = [
+  {
+    name: 'ollama',
+    modelVariable: 'OLLAMA_MODEL',
+    hostVariable: 'OLLAMA_HOST',
+    apiKeyVariable: null,
+    hostRequired: false,
+  },
+  {
+    name: 'lmstudio',
+    modelVariable: 'LMSTUDIO_MODEL',
+    hostVariable: 'LMSTUDIO_HOST',
+    apiKeyVariable: 'LMSTUDIO_API_KEY',
+    hostRequired: false,
+  },
+  {
+    name: 'vllm',
+    modelVariable: 'VLLM_MODEL',
+    hostVariable: 'VLLM_HOST',
+    apiKeyVariable: 'VLLM_API_KEY',
+    hostRequired: false,
+  },
+  {
+    name: 'llamacpp',
+    modelVariable: 'LLAMACPP_MODEL',
+    hostVariable: 'LLAMACPP_HOST',
+    apiKeyVariable: 'LLAMACPP_API_KEY',
+    hostRequired: false,
+  },
+  {
+    name: 'openai-compatible',
+    modelVariable: 'OPENAI_COMPATIBLE_MODEL',
+    hostVariable: 'OPENAI_COMPATIBLE_HOST',
+    apiKeyVariable: 'OPENAI_COMPATIBLE_API_KEY',
+    hostRequired: true,
+  },
+];
+
+interface SharedLocalSettings {
+  readonly model: string;
+  readonly allowedHosts: readonly string[];
+  readonly allowedHostsLabel: string;
+  readonly timeoutMs: number;
+  readonly host?: string;
+}
+
+function buildLocalText(
+  spec: LocalSpec,
+  model: string,
+  host: string | null,
+  apiKey: string | null,
+  allowedHosts: readonly string[],
+  timeoutMs: number
+): TextProviderConfig | null {
+  const shared: SharedLocalSettings = {
+    model,
+    allowedHosts,
+    allowedHostsLabel: 'AI_ALLOWED_HOSTS',
+    timeoutMs,
+    ...(host === null ? {} : { host }),
+  };
+  const keyed: SharedLocalSettings & { readonly apiKey?: string } = {
+    ...shared,
+    ...(apiKey === null ? {} : { apiKey }),
+  };
+  switch (spec.name) {
+    case 'ollama':
+      return { provider: 'ollama', ...shared };
+    case 'lmstudio':
+      return { provider: 'lmstudio', ...keyed };
+    case 'vllm':
+      return { provider: 'vllm', ...keyed };
+    case 'llamacpp':
+      return { provider: 'llamacpp', ...keyed };
+    case 'openai-compatible':
+      return host === null
+        ? null
+        : { provider: 'openai-compatible', ...keyed, host };
+  }
+}
 
 function buildHostedText(
   spec: HostedSpec,
@@ -231,6 +331,13 @@ function buildHostedText(
         timeoutMs,
         ...(model === null ? {} : { model }),
       };
+    case 'openrouter':
+      return {
+        provider: 'openrouter',
+        apiKey,
+        timeoutMs,
+        ...(model === null ? {} : { model }),
+      };
   }
 }
 
@@ -247,6 +354,7 @@ function buildHostedImage(
     case 'grok':
       return { provider: 'grok', apiKey, timeoutMs };
     case 'claude':
+    case 'openrouter':
       return null;
   }
 }
@@ -490,36 +598,47 @@ export function parseConfig(
     }
   }
 
-  // Ollama: enabled by OLLAMA_MODEL. Loopback unless AI_ALLOWED_HOSTS lists the host.
-  const ollamaModel: Result<string | null> = readModel(env, 'OLLAMA_MODEL');
-  if (!ollamaModel.ok) return ollamaModel;
+  // Local servers: each is enabled by its model variable. Loopback unless
+  // AI_ALLOWED_HOSTS lists the host.
   const allowedHosts: readonly string[] = parseAllowedHosts(
     readVariable(env, 'AI_ALLOWED_HOSTS') ?? ''
   );
-  if (ollamaModel.value !== null) {
-    const ollamaHost: string | null = readVariable(env, 'OLLAMA_HOST');
-    if (ollamaHost !== null) {
+  for (const spec of LOCAL_PROVIDERS) {
+    const model: Result<string | null> = readModel(env, spec.modelVariable);
+    if (!model.ok) return model;
+    if (model.value === null) {
+      continue;
+    }
+    const host: string | null = readVariable(env, spec.hostVariable);
+    if (host === null && spec.hostRequired) {
+      return err(
+        `${spec.hostVariable}: required when ${spec.modelVariable} is set (${spec.name} has no usual port to assume), e.g. http://127.0.0.1:8080.`
+      );
+    }
+    if (host !== null) {
       const checkedHost: Result<string> = checkProviderHost(
-        'OLLAMA_HOST',
-        ollamaHost,
-        {
-          allowedHosts,
-          allowedHostsLabel: 'AI_ALLOWED_HOSTS',
-        }
+        spec.hostVariable,
+        host,
+        { allowedHosts, allowedHostsLabel: 'AI_ALLOWED_HOSTS' }
       );
       if (!checkedHost.ok) return checkedHost;
     }
-    textProviders.push({
-      name: 'ollama',
-      config: {
-        provider: 'ollama',
-        model: ollamaModel.value,
-        allowedHosts,
-        allowedHostsLabel: 'AI_ALLOWED_HOSTS',
-        timeoutMs: timeout.value,
-        ...(ollamaHost === null ? {} : { host: ollamaHost }),
-      },
-    });
+    const apiKey: string | null =
+      spec.apiKeyVariable === null
+        ? null
+        : readVariable(env, spec.apiKeyVariable);
+    const localConfig: TextProviderConfig | null = buildLocalText(
+      spec,
+      model.value,
+      host,
+      apiKey,
+      allowedHosts,
+      timeout.value
+    );
+    if (localConfig === null) {
+      return err(`${spec.hostVariable}: required for ${spec.name}.`);
+    }
+    textProviders.push({ name: spec.name, config: localConfig });
   }
 
   const textNames: readonly string[] = textProviders.map(

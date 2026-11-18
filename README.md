@@ -12,7 +12,7 @@
 
 ## Overview
 
-A TypeScript [MCP](https://modelcontextprotocol.io/) server that routes text and image generation to swappable AI providers (Claude, Gemini, OpenAI, Grok and Ollama) through [`@richardmcquiston01/ai-providers`](https://github.com/RichardMcQuiston01/ai-providers).
+A TypeScript [MCP](https://modelcontextprotocol.io/) server that routes text and image generation to swappable AI providers (Claude, Gemini, OpenAI, Grok, OpenRouter, Ollama, LM Studio, vLLM, llama.cpp and other OpenAI-compatible servers) through [`@richardmcquiston01/ai-providers`](https://github.com/RichardMcQuiston01/ai-providers).
 
 The provider is chosen in configuration, so a client calls the same tool whether the model behind it is hosted or local. The server is intentionally generic: it generates text and images. Prompt rules, output checks and the decision to use a result belong to the client. More providers from `@richardmcquiston01/ai-providers` (OpenRouter, LM Studio, vLLM, llama.cpp, ComfyUI and others) can be added; see [ROADMAP.md](ROADMAP.md).
 
@@ -38,13 +38,20 @@ Version 0.1: `list_providers`, `generate_text` and `generate_image` work over st
 
 ### Providers
 
-| Provider | Text | Image | Enabled by          | SDK to install                        |
-| -------- | ---- | ----- | ------------------- | ------------------------------------- |
-| `claude` | yes  | no    | `ANTHROPIC_API_KEY` | `@anthropic-ai/sdk`                   |
-| `gemini` | yes  | yes   | `GEMINI_API_KEY`    | `@richardmcquiston01/gemini-icon-gen` |
-| `openai` | yes  | yes   | `OPENAI_API_KEY`    | `openai`                              |
-| `grok`   | yes  | yes   | `XAI_API_KEY`       | `openai` for text; none for images    |
-| `ollama` | yes  | no    | `OLLAMA_MODEL`      | none                                  |
+| Provider            | Text | Image | Enabled by                                             | SDK to install                        |
+| ------------------- | ---- | ----- | ------------------------------------------------------ | ------------------------------------- |
+| `claude`            | yes  | no    | `ANTHROPIC_API_KEY`                                    | `@anthropic-ai/sdk`                   |
+| `gemini`            | yes  | yes   | `GEMINI_API_KEY`                                       | `@richardmcquiston01/gemini-icon-gen` |
+| `openai`            | yes  | yes   | `OPENAI_API_KEY`                                       | `openai`                              |
+| `grok`              | yes  | yes   | `XAI_API_KEY`                                          | `openai` for text; none for images    |
+| `openrouter`        | yes  | no    | `OPENROUTER_API_KEY`                                   | `openai`                              |
+| `ollama`            | yes  | no    | `OLLAMA_MODEL`                                         | none                                  |
+| `lmstudio`          | yes  | no    | `LMSTUDIO_MODEL`                                       | `openai`                              |
+| `vllm`              | yes  | no    | `VLLM_MODEL`                                           | `openai`                              |
+| `llamacpp`          | yes  | no    | `LLAMACPP_MODEL`                                       | `openai`                              |
+| `openai-compatible` | yes  | no    | `OPENAI_COMPATIBLE_MODEL` and `OPENAI_COMPATIBLE_HOST` | `openai`                              |
+
+LM Studio, vLLM and llama.cpp use their usual ports (`1234`, `8000`, `8080`); set `LMSTUDIO_HOST`, `VLLM_HOST` or `LLAMACPP_HOST` to change one. `openai-compatible` covers any other server that speaks the OpenAI protocol (Jan, LocalAI, text-generation-webui) and has no usual port, so its host is required. A key variable (`VLLM_API_KEY` and so on) is only for servers started with one. OpenRouter picks its own router model unless `OPENROUTER_MODEL` is set.
 
 Prompts and images go only to the provider you choose with `AI_TEXT_PROVIDER` / `AI_IMAGE_PROVIDER` (required when more than one is enabled).
 
@@ -56,7 +63,7 @@ MCP clients run the server with `npx`. `npx` does not install the optional SDK, 
 npx -y -p ai-providers-mcp -p @anthropic-ai/sdk ai-providers-mcp
 ```
 
-Ollama needs no SDK, and neither does Grok image generation, so `npx -y ai-providers-mcp` is enough for those.
+Ollama needs no SDK, and neither does Grok image generation, so `npx -y ai-providers-mcp` is enough for those. OpenRouter and the OpenAI-protocol local servers (LM Studio, vLLM, llama.cpp, `openai-compatible`) use the `openai` package, so add `-p openai` for them.
 
 From source:
 
@@ -122,10 +129,10 @@ docker compose exec ai-providers-mcp cat /data/token   # the bearer token
 
 Then send `Authorization: Bearer <token>` to `http://127.0.0.1:8787/mcp`.
 
-- **Keys** arrive as environment variables at run time. For Docker secrets, set `ANTHROPIC_API_KEY_FILE=/run/secrets/<name>` (the same works for `GEMINI`, `OPENAI`, `XAI` and `MCP_AUTH_TOKEN`) and add a `secrets:` entry; the entrypoint reads the file and never prints it.
+- **Keys** arrive as environment variables at run time. For Docker secrets, set `ANTHROPIC_API_KEY_FILE=/run/secrets/<name>` (the same works for `GEMINI`, `OPENAI`, `XAI`, `OPENROUTER`, the local-server keys and `MCP_AUTH_TOKEN`) and add a `secrets:` entry; the entrypoint reads the file and never prints it.
 - **Token:** unless `MCP_AUTH_TOKEN` is set, one is generated on first start into the `token-data` volume and reused after restarts.
 - **Another host port:** set `MCP_HOST_PORT=9000`. Compose then allows the `Host: 127.0.0.1:9000` header; for other mappings list them in `MCP_ALLOWED_HOSTS`.
-- **Ollama on the host or over Tailscale:** loopback inside a container is the container itself, so name the host and allow it, for example `OLLAMA_MODEL=llama3.2`, `OLLAMA_HOST=http://host.docker.internal:11434` and `AI_ALLOWED_HOSTS=host.docker.internal`.
+- **Local servers on the host or over Tailscale** (Ollama, LM Studio, vLLM, llama.cpp): loopback inside a container is the container itself, so name the host and allow it, for example `OLLAMA_MODEL=llama3.2`, `OLLAMA_HOST=http://host.docker.internal:11434` and `AI_ALLOWED_HOSTS=host.docker.internal`.
 - **Provider SDKs:** the image installs the optional peers for Claude, OpenAI and Gemini. For a smaller image use `docker build --build-arg PEER_PACKAGES="" .`
 - The root filesystem is read-only, all capabilities are dropped, and the container log never contains the token or a key.
 
@@ -192,26 +199,26 @@ The result is an MCP `image` content block (`data` is base64, `mimeType` comes f
 
 Set variables in the client's `env` block, the shell, or a git-ignored `.env`. See [`.env.example`](.env.example).
 
-| Variable                                                                      | Purpose                                                                                                                                                                             |
-| ----------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `AI_TEXT_PROVIDER`                                                            | default text provider name (`claude`, `gemini`, ...)                                                                                                                                |
-| `AI_IMAGE_PROVIDER`                                                           | default image provider name                                                                                                                                                         |
-| `ANTHROPIC_API_KEY`, `GEMINI_API_KEY`, `OPENAI_API_KEY`, `XAI_API_KEY`        | provider keys                                                                                                                                                                       |
-| `CLAUDE_TEXT_MODEL`, `GEMINI_TEXT_MODEL`, `OPENAI_TEXT_MODEL`, `OLLAMA_MODEL` | model overrides                                                                                                                                                                     |
-| `OLLAMA_HOST` (and similar local hosts)                                       | local server URL; loopback unless explicitly allowed                                                                                                                                |
-| `AI_ALLOWED_HOSTS`                                                            | comma-separated hosts, besides loopback, that local providers may use                                                                                                               |
-| `AI_TIMEOUT_MS`                                                               | per-call timeout in milliseconds (default `120000`)                                                                                                                                 |
-| `AI_MAX_PROMPT_CHARS`, `AI_MAX_IMAGES`, `AI_MAX_IMAGE_BYTES`                  | input limits (defaults `100000`, `4`, `8388608`)                                                                                                                                    |
-| `AI_MAX_OUTPUT_IMAGE_BYTES`                                                   | largest generated image returned (default `16777216`); a larger one is refused with an error naming this setting                                                                    |
-| `MCP_TRANSPORT`                                                               | `stdio` (default) or `http`; the `--http` flag also selects HTTP                                                                                                                    |
-| `MCP_HTTP_PORT`                                                               | HTTP port (default `8787`)                                                                                                                                                          |
-| `MCP_AUTH_TOKEN`                                                              | bearer token (24+ characters). Unset: one is read from or generated into `MCP_TOKEN_FILE`                                                                                           |
-| `MCP_TOKEN_FILE`                                                              | where a generated token is stored, mode `0600` (default `~/.config/ai-providers-mcp/token`)                                                                                         |
-| `MCP_ALLOWED_ORIGINS`                                                         | comma-separated exact origins that may call from a browser, e.g. `chrome-extension://abcdef`                                                                                        |
-| `MCP_ALLOWED_HOSTS`                                                           | comma-separated extra `Host` header values (`host:port`) accepted besides the loopback names, for a published port that differs from the bound one                                  |
-| `MCP_HTTP_HOST`, `MCP_HTTP_ALLOW_NON_LOOPBACK`                                | bind address (default `127.0.0.1`). Anything but loopback is refused unless `MCP_HTTP_ALLOW_NON_LOOPBACK=true`, intended for containers whose port is published on `127.0.0.1` only |
+| Variable                                                                                                                                                                       | Purpose                                                                                                                                                                             |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `AI_TEXT_PROVIDER`                                                                                                                                                             | default text provider name (`claude`, `gemini`, ...)                                                                                                                                |
+| `AI_IMAGE_PROVIDER`                                                                                                                                                            | default image provider name                                                                                                                                                         |
+| `ANTHROPIC_API_KEY`, `GEMINI_API_KEY`, `OPENAI_API_KEY`, `XAI_API_KEY`, `OPENROUTER_API_KEY`                                                                                   | provider keys                                                                                                                                                                       |
+| `CLAUDE_TEXT_MODEL`, `GEMINI_TEXT_MODEL`, `OPENAI_TEXT_MODEL`, `OPENROUTER_MODEL`; `OLLAMA_MODEL`, `LMSTUDIO_MODEL`, `VLLM_MODEL`, `LLAMACPP_MODEL`, `OPENAI_COMPATIBLE_MODEL` | model overrides; the local ones also enable their server                                                                                                                            |
+| `OLLAMA_HOST`, `LMSTUDIO_HOST`, `VLLM_HOST`, `LLAMACPP_HOST`, `OPENAI_COMPATIBLE_HOST`                                                                                         | local server URL; loopback unless explicitly allowed                                                                                                                                |
+| `AI_ALLOWED_HOSTS`                                                                                                                                                             | comma-separated hosts, besides loopback, that local providers may use                                                                                                               |
+| `AI_TIMEOUT_MS`                                                                                                                                                                | per-call timeout in milliseconds (default `120000`)                                                                                                                                 |
+| `AI_MAX_PROMPT_CHARS`, `AI_MAX_IMAGES`, `AI_MAX_IMAGE_BYTES`                                                                                                                   | input limits (defaults `100000`, `4`, `8388608`)                                                                                                                                    |
+| `AI_MAX_OUTPUT_IMAGE_BYTES`                                                                                                                                                    | largest generated image returned (default `16777216`); a larger one is refused with an error naming this setting                                                                    |
+| `MCP_TRANSPORT`                                                                                                                                                                | `stdio` (default) or `http`; the `--http` flag also selects HTTP                                                                                                                    |
+| `MCP_HTTP_PORT`                                                                                                                                                                | HTTP port (default `8787`)                                                                                                                                                          |
+| `MCP_AUTH_TOKEN`                                                                                                                                                               | bearer token (24+ characters). Unset: one is read from or generated into `MCP_TOKEN_FILE`                                                                                           |
+| `MCP_TOKEN_FILE`                                                                                                                                                               | where a generated token is stored, mode `0600` (default `~/.config/ai-providers-mcp/token`)                                                                                         |
+| `MCP_ALLOWED_ORIGINS`                                                                                                                                                          | comma-separated exact origins that may call from a browser, e.g. `chrome-extension://abcdef`                                                                                        |
+| `MCP_ALLOWED_HOSTS`                                                                                                                                                            | comma-separated extra `Host` header values (`host:port`) accepted besides the loopback names, for a published port that differs from the bound one                                  |
+| `MCP_HTTP_HOST`, `MCP_HTTP_ALLOW_NON_LOOPBACK`                                                                                                                                 | bind address (default `127.0.0.1`). Anything but loopback is refused unless `MCP_HTTP_ALLOW_NON_LOOPBACK=true`, intended for containers whose port is published on `127.0.0.1` only |
 
-The default Claude model is `claude-sonnet-5-5` with effort `medium` to keep cost low. Override it with `CLAUDE_TEXT_MODEL` or per call. An unknown provider name returns an error listing the valid names. Setting a provider's key (or `OLLAMA_MODEL` for Ollama) enables it. If more than one provider of a kind is enabled, set `AI_TEXT_PROVIDER` / `AI_IMAGE_PROVIDER` so prompts only go where you choose.
+The default Claude model is `claude-sonnet-5-5` with effort `medium` to keep cost low. Override it with `CLAUDE_TEXT_MODEL` or per call. An unknown provider name returns an error listing the valid names. Setting a provider's key (or the model variable of a local server, such as `OLLAMA_MODEL`) enables it. If more than one provider of a kind is enabled, set `AI_TEXT_PROVIDER` / `AI_IMAGE_PROVIDER` so prompts only go where you choose.
 
 [Back to Top](#table-of-contents)
 
@@ -230,7 +237,7 @@ The default Claude model is `claude-sonnet-5-5` with effort `medium` to keep cos
 
 ## Privacy
 
-Each user supplies their own provider keys. Prompts and images are sent to whichever hosted provider is configured (Anthropic, Google, OpenAI, xAI). They stay on your machine or network only when you use Ollama.
+Each user supplies their own provider keys. Prompts and images are sent to whichever hosted provider is configured (Anthropic, Google, OpenAI, xAI, OpenRouter). They stay on your machine or network only when you use a local server (Ollama, LM Studio, vLLM, llama.cpp or another OpenAI-compatible one). OpenRouter is hosted: it forwards prompts to the model provider you pick.
 
 [Back to Top](#table-of-contents)
 
