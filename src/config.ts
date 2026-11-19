@@ -96,30 +96,86 @@ function readVariable(env: EnvironmentMap, name: string): string | null {
   return trimmed.length === 0 ? null : trimmed;
 }
 
-/** A model name from the environment or a tool call: short, no whitespace or control characters. */
-export function checkModelName(value: string, source: string): Result<string> {
+/** Local OpenAI-protocol servers whose served model names may contain spaces (vLLM `--served-model-name`). */
+export const SPACED_MODEL_PROVIDERS: readonly string[] = [
+  'lmstudio',
+  'vllm',
+  'llamacpp',
+  'openai-compatible',
+];
+
+/**
+ * A model name from the environment or a tool call: short, no control
+ * characters, and no whitespace unless `allowSpaces` permits plain ASCII
+ * spaces inside the name (tabs, newlines and other whitespace never).
+ */
+export function checkModelName(
+  value: string,
+  source: string,
+  allowSpaces: boolean = false
+): Result<string> {
   const trimmed: string = value.trim();
   if (trimmed.length === 0 || trimmed.length > MAX_MODEL_NAME_LENGTH) {
     return err(
       `${source}: model name must be 1 to ${MAX_MODEL_NAME_LENGTH} characters, got ${trimmed.length}.`
     );
   }
-  // eslint-disable-next-line no-control-regex
-  if (/[\s\u0000-\u001f\u007f]/.test(trimmed)) {
+  /* eslint-disable no-control-regex */
+  const forbidden: RegExp = allowSpaces
+    ? /[^\S ]|[\u0000-\u001f\u007f]/
+    : /[\s\u0000-\u001f\u007f]/;
+  /* eslint-enable no-control-regex */
+  if (forbidden.test(trimmed)) {
     return err(
-      `${source}: model name must not contain whitespace or control characters.`
+      allowSpaces
+        ? `${source}: model name must not contain control characters or whitespace other than spaces.`
+        : `${source}: model name must not contain whitespace or control characters.`
     );
   }
   return ok(trimmed);
 }
 
-/** Reads and validates an optional model override. */
-function readModel(env: EnvironmentMap, name: string): Result<string | null> {
+/**
+ * An optional API path such as `/inference/v1`: starts with `/`, no query,
+ * fragment, backslash, whitespace or `..` segment. Null when unset.
+ */
+function readApiPath(
+  env: EnvironmentMap,
+  name: string | null
+): Result<string | null> {
+  if (name === null) {
+    return ok(null);
+  }
   const raw: string | null = readVariable(env, name);
   if (raw === null) {
     return ok(null);
   }
-  const checked: Result<string> = checkModelName(raw, name);
+  /* eslint-disable no-control-regex */
+  const invalid: boolean =
+    !raw.startsWith('/') ||
+    raw.length > 200 ||
+    /[\s?#\\\u0000-\u001f\u007f]/.test(raw) ||
+    raw.split('/').includes('..');
+  /* eslint-enable no-control-regex */
+  if (invalid) {
+    return err(
+      `${name}: expected a path that starts with "/" and has no spaces, "?", "#" or "..", e.g. /inference/v1, got "${raw}".`
+    );
+  }
+  return ok(raw);
+}
+
+/** Reads and validates an optional model override. */
+function readModel(
+  env: EnvironmentMap,
+  name: string,
+  allowSpaces: boolean = false
+): Result<string | null> {
+  const raw: string | null = readVariable(env, name);
+  if (raw === null) {
+    return ok(null);
+  }
+  const checked: Result<string> = checkModelName(raw, name, allowSpaces);
   return checked.ok ? ok(checked.value) : checked;
 }
 
@@ -212,6 +268,8 @@ interface LocalSpec {
   readonly apiKeyVariable: string | null;
   /** True when the server has no usual port to assume. */
   readonly hostRequired: boolean;
+  /** Optional variable for an API path other than `/v1`. Null when not offered. */
+  readonly apiPathVariable: string | null;
 }
 
 const LOCAL_PROVIDERS: readonly LocalSpec[] = [
@@ -221,6 +279,7 @@ const LOCAL_PROVIDERS: readonly LocalSpec[] = [
     hostVariable: 'OLLAMA_HOST',
     apiKeyVariable: null,
     hostRequired: false,
+    apiPathVariable: null,
   },
   {
     name: 'lmstudio',
@@ -228,6 +287,7 @@ const LOCAL_PROVIDERS: readonly LocalSpec[] = [
     hostVariable: 'LMSTUDIO_HOST',
     apiKeyVariable: 'LMSTUDIO_API_KEY',
     hostRequired: false,
+    apiPathVariable: null,
   },
   {
     name: 'vllm',
@@ -235,6 +295,7 @@ const LOCAL_PROVIDERS: readonly LocalSpec[] = [
     hostVariable: 'VLLM_HOST',
     apiKeyVariable: 'VLLM_API_KEY',
     hostRequired: false,
+    apiPathVariable: null,
   },
   {
     name: 'llamacpp',
@@ -242,6 +303,7 @@ const LOCAL_PROVIDERS: readonly LocalSpec[] = [
     hostVariable: 'LLAMACPP_HOST',
     apiKeyVariable: 'LLAMACPP_API_KEY',
     hostRequired: false,
+    apiPathVariable: null,
   },
   {
     name: 'openai-compatible',
@@ -249,6 +311,7 @@ const LOCAL_PROVIDERS: readonly LocalSpec[] = [
     hostVariable: 'OPENAI_COMPATIBLE_HOST',
     apiKeyVariable: 'OPENAI_COMPATIBLE_API_KEY',
     hostRequired: true,
+    apiPathVariable: 'OPENAI_COMPATIBLE_API_PATH',
   },
 ];
 
@@ -265,6 +328,7 @@ function buildLocalText(
   model: string,
   host: string | null,
   apiKey: string | null,
+  apiPath: string | null,
   allowedHosts: readonly string[],
   timeoutMs: number
 ): TextProviderConfig | null {
@@ -275,8 +339,12 @@ function buildLocalText(
     timeoutMs,
     ...(host === null ? {} : { host }),
   };
-  const keyed: SharedLocalSettings & { readonly apiKey?: string } = {
+  const keyed: SharedLocalSettings & {
+    readonly apiKey?: string;
+    readonly apiPath?: string;
+  } = {
     ...shared,
+    ...(apiPath === null ? {} : { apiPath }),
     ...(apiKey === null ? {} : { apiKey }),
   };
   switch (spec.name) {
@@ -294,6 +362,20 @@ function buildLocalText(
         : { provider: 'openai-compatible', ...keyed, host };
   }
 }
+
+/** What turns each provider on, for messages that tell the operator what to set. */
+const ENABLED_BY: Readonly<Record<string, string>> = Object.fromEntries([
+  ...HOSTED_PROVIDERS.map((spec): [string, string] => [
+    spec.name,
+    spec.keyVariable,
+  ]),
+  ...LOCAL_PROVIDERS.map((spec): [string, string] => [
+    spec.name,
+    spec.hostRequired
+      ? `${spec.modelVariable} and ${spec.hostVariable}`
+      : spec.modelVariable,
+  ]),
+]);
 
 function buildHostedText(
   spec: HostedSpec,
@@ -365,7 +447,8 @@ function chooseDefault(
   variable: string,
   kind: 'text' | 'image',
   validNames: readonly string[],
-  configuredNames: readonly string[]
+  configuredNames: readonly string[],
+  enabledBy: Readonly<Record<string, string>>
 ): Result<string | null> {
   const requested: string | null = readVariable(env, variable);
   if (requested === null) {
@@ -391,7 +474,7 @@ function chooseDefault(
     const configuredLabel: string =
       configuredNames.length === 0 ? 'none' : configuredNames.join(', ');
     return err(
-      `${variable}: ${kind} provider "${name}" is not configured (missing its API key or host setting). Configured: ${configuredLabel}.`
+      `${variable}: ${kind} provider "${name}" is not configured (set ${enabledBy[name] ?? 'its settings'} to enable it). Configured: ${configuredLabel}.`
     );
   }
   return ok(name);
@@ -604,7 +687,11 @@ export function parseConfig(
     readVariable(env, 'AI_ALLOWED_HOSTS') ?? ''
   );
   for (const spec of LOCAL_PROVIDERS) {
-    const model: Result<string | null> = readModel(env, spec.modelVariable);
+    const model: Result<string | null> = readModel(
+      env,
+      spec.modelVariable,
+      SPACED_MODEL_PROVIDERS.includes(spec.name)
+    );
     if (!model.ok) return model;
     if (model.value === null) {
       continue;
@@ -627,11 +714,17 @@ export function parseConfig(
       spec.apiKeyVariable === null
         ? null
         : readVariable(env, spec.apiKeyVariable);
+    const apiPath: Result<string | null> = readApiPath(
+      env,
+      spec.apiPathVariable
+    );
+    if (!apiPath.ok) return apiPath;
     const localConfig: TextProviderConfig | null = buildLocalText(
       spec,
       model.value,
       host,
       apiKey,
+      apiPath.value,
       allowedHosts,
       timeout.value
     );
@@ -652,7 +745,8 @@ export function parseConfig(
     'AI_TEXT_PROVIDER',
     'text',
     TEXT_PROVIDERS,
-    textNames
+    textNames,
+    ENABLED_BY
   );
   if (!defaultText.ok) return defaultText;
   const defaultImage: Result<string | null> = chooseDefault(
@@ -660,7 +754,8 @@ export function parseConfig(
     'AI_IMAGE_PROVIDER',
     'image',
     IMAGE_PROVIDERS,
-    imageNames
+    imageNames,
+    ENABLED_BY
   );
   if (!defaultImage.ok) return defaultImage;
 
