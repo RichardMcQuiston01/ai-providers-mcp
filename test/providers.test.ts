@@ -99,6 +99,29 @@ test('a bad per-call model is rejected before any provider is built', () => {
   assert.equal(seen.length, before);
 });
 
+test('a per-call model with spaces is allowed for vllm but not claude', () => {
+  const { registry, seen } = fakeRegistry({
+    ANTHROPIC_API_KEY: 'k',
+    VLLM_MODEL: 'base',
+    AI_TEXT_PROVIDER: 'vllm',
+  });
+  const spaced: Result<TextGenerator> = registry.getTextGenerator(
+    'vllm',
+    'Team Chat'
+  );
+  assert.equal(spaced.ok, true);
+  const last: TextProviderConfig | undefined = seen[seen.length - 1];
+  assert.equal(
+    last !== undefined && 'model' in last ? last.model : '',
+    'Team Chat'
+  );
+  const claude: Result<TextGenerator> = registry.getTextGenerator(
+    'claude',
+    'Team Chat'
+  );
+  assert.equal(claude.ok, false);
+});
+
 test('no configured provider gives a descriptive error', () => {
   const { registry } = fakeRegistry({});
   const text: Result<TextGenerator> = registry.getTextGenerator();

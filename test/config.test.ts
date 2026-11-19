@@ -152,6 +152,67 @@ test('local servers stay on loopback unless allowed, and name the variable', () 
     AI_ALLOWED_HOSTS: 'gpu-box',
   });
   assert.equal(config.textProviders[0]?.name, 'lmstudio');
+  const settings: TextProviderConfig | undefined =
+    config.textProviders[0]?.config;
+  assert.equal(
+    settings !== undefined && 'host' in settings ? settings.host : null,
+    'http://gpu-box:1234'
+  );
+});
+
+test('the not-configured error names the variable that enables the provider', () => {
+  assert.match(
+    mustFail({
+      AI_TEXT_PROVIDER: 'lmstudio',
+      LMSTUDIO_HOST: 'http://127.0.0.1:1234',
+      LMSTUDIO_API_KEY: 'k',
+    }),
+    /set LMSTUDIO_MODEL to enable it/
+  );
+  assert.match(
+    mustFail({ AI_TEXT_PROVIDER: 'claude' }),
+    /set ANTHROPIC_API_KEY to enable it/
+  );
+  assert.match(
+    mustFail({ AI_TEXT_PROVIDER: 'openai-compatible' }),
+    /set OPENAI_COMPATIBLE_MODEL and OPENAI_COMPATIBLE_HOST to enable it/
+  );
+});
+
+test('served model names with spaces work for vllm but not ollama', () => {
+  const config: ServerConfig = mustParse({ VLLM_MODEL: 'Team Chat' });
+  const settings: TextProviderConfig | undefined =
+    config.textProviders[0]?.config;
+  assert.equal(
+    settings !== undefined && 'model' in settings ? settings.model : null,
+    'Team Chat'
+  );
+  assert.match(mustFail({ OLLAMA_MODEL: 'Team Chat' }), /OLLAMA_MODEL/);
+  assert.match(mustFail({ VLLM_MODEL: 'Team\tChat' }), /other than spaces/);
+  assert.match(mustFail({ VLLM_MODEL: 'Team\u0001Chat' }), /VLLM_MODEL/);
+});
+
+test('openai-compatible takes an optional API path and rejects odd ones', () => {
+  const base: EnvironmentMap = {
+    OPENAI_COMPATIBLE_MODEL: 'm',
+    OPENAI_COMPATIBLE_HOST: 'http://127.0.0.1:1337',
+  };
+  const config: ServerConfig = mustParse({
+    ...base,
+    OPENAI_COMPATIBLE_API_PATH: '/inference/v1',
+  });
+  const settings: TextProviderConfig | undefined =
+    config.textProviders[0]?.config;
+  assert.equal(
+    settings !== undefined && 'apiPath' in settings ? settings.apiPath : null,
+    '/inference/v1'
+  );
+  for (const bad of ['v1', '/a b', '/v1?x=1', '/a/../b', '/v1#frag']) {
+    assert.match(
+      mustFail({ ...base, OPENAI_COMPATIBLE_API_PATH: bad }),
+      /OPENAI_COMPATIBLE_API_PATH/
+    );
+  }
 });
 
 test('a local server key is passed to the provider and never logged', () => {

@@ -13,6 +13,7 @@ import {
 
 import {
   checkModelName,
+  SPACED_MODEL_PROVIDERS,
   type ProviderSettings,
   type ServerConfig,
 } from './config.js';
@@ -129,7 +130,11 @@ export function createProviderRegistry(
       if (!selected.ok) return selected;
       let settings: TextProviderConfig = selected.value.config;
       if (model !== undefined) {
-        const checkedModel: Result<string> = checkModelName(model, 'model');
+        const checkedModel: Result<string> = checkModelName(
+          model,
+          'model',
+          SPACED_MODEL_PROVIDERS.includes(selected.value.name)
+        );
         if (!checkedModel.ok) return checkedModel;
         // Only the model changes; keys and hosts always come from the operator.
         settings = { ...settings, model: checkedModel.value };

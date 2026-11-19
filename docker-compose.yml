@@ -21,7 +21,10 @@ services:
       AI_IMAGE_PROVIDER: ${AI_IMAGE_PROVIDER:-}
       # Provider keys, from the environment at run time. To use Docker secrets
       # instead, set ANTHROPIC_API_KEY_FILE=/run/secrets/<name> (the same works
-      # for GEMINI, OPENAI, XAI and MCP_AUTH_TOKEN) and add a `secrets:` entry.
+      # for GEMINI, OPENAI, XAI, OPENROUTER, the local-server keys and
+      # MCP_AUTH_TOKEN), list that variable here under `environment:` (Compose
+      # passes only what is listed, not other values in .env) and add a
+      # top-level `secrets:` entry plus one under this service.
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
@@ -51,6 +54,7 @@ services:
       OPENAI_COMPATIBLE_MODEL: ${OPENAI_COMPATIBLE_MODEL:-}
       OPENAI_COMPATIBLE_HOST: ${OPENAI_COMPATIBLE_HOST:-}
       OPENAI_COMPATIBLE_API_KEY: ${OPENAI_COMPATIBLE_API_KEY:-}
+      OPENAI_COMPATIBLE_API_PATH: ${OPENAI_COMPATIBLE_API_PATH:-}
       AI_ALLOWED_HOSTS: ${AI_ALLOWED_HOSTS:-}
       AI_TIMEOUT_MS: ${AI_TIMEOUT_MS:-}
       AI_MAX_PROMPT_CHARS: ${AI_MAX_PROMPT_CHARS:-}
